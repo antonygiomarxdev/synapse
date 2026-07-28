@@ -1,10 +1,1 @@
-# Mutants configuration
-# Only genuinely untestable code is excluded, with documented reasoning.
-
-[mutants]
-# `main.rs` — Binary entrypoint. The `mutant main with ()` would silently
-# exit the process. `main()` cannot be called from tests (it starts the
-# tokio runtime and axum, then blocks forever). All business logic is
-# extracted into testable `serve()` and `build_router()` functions.
-# This is a universal Rust limitation shared by every axum/actix/rocket binary.
-exclude = ["**/main.rs"]
+exclude_globs = ["**/main.rs"]
