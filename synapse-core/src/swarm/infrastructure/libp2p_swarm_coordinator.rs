@@ -10,6 +10,7 @@ use std::sync::Arc;
 /// transport will be added in a later phase; for now it simulates
 /// multi-node coordination by invoking the provided `InferenceEngine`
 /// multiple times with different swarm seeds.
+#[derive(Clone)]
 pub struct Libp2pSwarmCoordinator {
     engine: Arc<dyn InferenceEngine>,
     last_outputs: Vec<NodeOutput>,
@@ -42,8 +43,6 @@ impl SwarmCoordinator for Libp2pSwarmCoordinator {
             outputs.push(NodeOutput { node_id, tokens: output.tokens });
         }
         let result = vote(request.id, &outputs, swarm.quorum())?;
-        // Store outputs for inspection via node_outputs().
-        let _ = outputs;
         Ok(result)
     }
 

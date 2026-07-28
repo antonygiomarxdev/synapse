@@ -1,0 +1,149 @@
+# Review package: e67fdeaf5943ccb0706a6cd9d24d50e12162ce54..HEAD
+
+## Commits
+e667ecc feat(swarm): add libp2p coordinator adapter and integration tests
+
+## Files changed
+ .../infrastructure/libp2p_swarm_coordinator.rs     | 53 ++++++++++++++++++++++
+ synapse-core/src/swarm/infrastructure/mod.rs       |  3 ++
+ synapse-core/src/swarm/mod.rs                      |  1 +
+ .../tests/libp2p_coordinator_integration.rs        | 44 ++++++++++++++++++
+ 4 files changed, 101 insertions(+)
+
+## Diff
+diff --git a/synapse-core/src/swarm/infrastructure/libp2p_swarm_coordinator.rs b/synapse-core/src/swarm/infrastructure/libp2p_swarm_coordinator.rs
+new file mode 100644
+index 0000000..91b5c5e
+--- /dev/null
++++ b/synapse-core/src/swarm/infrastructure/libp2p_swarm_coordinator.rs
+@@ -0,0 +1,53 @@
++use crate::identity::NodeId;
++use crate::shared::DomainError;
++use crate::swarm::consensus::{ConsensusResult, NodeOutput, vote};
++use crate::swarm::ports::{InferenceEngine, InferenceRequest, SwarmCoordinator};
++use std::sync::Arc;
++
++/// libp2p-based coordinator adapter.
++///
++/// V1 uses the adapter as a local trait bridge. The full network
++/// transport will be added in a later phase; for now it simulates
++/// multi-node coordination by invoking the provided `InferenceEngine`
++/// multiple times with different swarm seeds.
++pub struct Libp2pSwarmCoordinator {
++    engine: Arc<dyn InferenceEngine>,
++    last_outputs: Vec<NodeOutput>,
++}
++
++impl std::fmt::Debug for Libp2pSwarmCoordinator {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("Libp2pSwarmCoordinator")
++            .field("engine", &"<inference engine>")
++            .field("last_outputs", &self.last_outputs)
++            .finish()
++    }
++}
++
++impl Libp2pSwarmCoordinator {
++    /// Creates a new coordinator backed by the given inference engine.
++    pub fn new(engine: Arc<dyn InferenceEngine>) -> Self {
++        Self { engine, last_outputs: Vec::new() }
++    }
++}
++
++impl SwarmCoordinator for Libp2pSwarmCoordinator {
++    fn coordinate(&self, request: &InferenceRequest) -> Result<ConsensusResult, DomainError> {
++        // Simulated multi-node coordination for V1.
++        let swarm = request.swarm.clone().ok_or(DomainError::InvalidSwarmSize { size: 0 })?;
++        let mut outputs = Vec::with_capacity(swarm.swarm_size() as usize);
++        for i in 0..swarm.swarm_size() {
++            let node_id = NodeId::from_public_key(&[i as u8; 32]);
++            let output = self.engine.generate(request)?;
++            outputs.push(NodeOutput { node_id, tokens: output.tokens });
++        }
++        let result = vote(request.id, &outputs, swarm.quorum())?;
++        // Store outputs for inspection via node_outputs().
++        let _ = outputs;
++        Ok(result)
++    }
++
++    fn node_outputs(&self) -> Vec<NodeOutput> {
++        self.last_outputs.clone()
++    }
++}
+diff --git a/synapse-core/src/swarm/infrastructure/mod.rs b/synapse-core/src/swarm/infrastructure/mod.rs
+new file mode 100644
+index 0000000..1efbb8a
+--- /dev/null
++++ b/synapse-core/src/swarm/infrastructure/mod.rs
+@@ -0,0 +1,3 @@
++pub mod libp2p_swarm_coordinator;
++
++pub use libp2p_swarm_coordinator::Libp2pSwarmCoordinator;
+diff --git a/synapse-core/src/swarm/mod.rs b/synapse-core/src/swarm/mod.rs
+index e2e5d79..99eb163 100644
+--- a/synapse-core/src/swarm/mod.rs
++++ b/synapse-core/src/swarm/mod.rs
+@@ -1,12 +1,13 @@
+ pub mod consensus;
+ pub mod dag;
++pub mod infrastructure;
+ pub mod ports;
+ pub mod resync;
+ pub mod speculative;
+ pub mod token;
+ 
+ pub use dag::DagRoute;
+ pub use ports::{InferenceEngine, InferenceOutput, InferenceRequest, Priority, SwarmCoordinator};
+ pub use resync::ReSyncPolicy;
+ pub use speculative::SpecSwarmConfig;
+ pub use token::Token;
+diff --git a/synapse-core/tests/libp2p_coordinator_integration.rs b/synapse-core/tests/libp2p_coordinator_integration.rs
+new file mode 100644
+index 0000000..bc4a189
+--- /dev/null
++++ b/synapse-core/tests/libp2p_coordinator_integration.rs
+@@ -0,0 +1,44 @@
++use std::sync::Arc;
++use synapse_core::model::ModelId;
++use synapse_core::shared::DomainError;
++use synapse_core::swarm::infrastructure::Libp2pSwarmCoordinator;
++use synapse_core::swarm::ports::{
++    InferenceEngine, InferenceOutput, InferenceRequest, Priority, SwarmCoordinator,
++};
++use synapse_core::swarm::{SpecSwarmConfig, Token};
++use uuid::Uuid;
++
++/// A deterministic inference engine that returns the same tokens on every call.
++///
++/// Used to verify that the coordinator reaches consensus when all nodes
++/// produce identical output. Divergence simulation will be added in a
++/// later phase when the coordinator accepts per-node engines.
++struct DeterministicEngine {
++    tokens: Vec<Token>,
++}
++
++impl InferenceEngine for DeterministicEngine {
++    fn generate(&self, _request: &InferenceRequest) -> Result<InferenceOutput, DomainError> {
++        Ok(InferenceOutput { request_id: Uuid::new_v4(), tokens: self.tokens.clone() })
++    }
++}
++
++#[tokio::test]
++async fn coordinator_reaches_consensus_with_unanimous_engine() {
++    let model = ModelId::new("kimi-k3").unwrap();
++    let tokens = vec![Token::new("def", -0.5).unwrap(), Token::new(" fibo", -0.2).unwrap()];
++    let engine = Arc::new(DeterministicEngine { tokens });
++    let coordinator = Libp2pSwarmCoordinator::new(engine);
++    let request = InferenceRequest {
++        id: Uuid::new_v4(),
++        model: model.clone(),
++        priority: Priority::Realtime,
++        swarm: Some(SpecSwarmConfig::new(model, 5).unwrap()),
++        max_tokens: 10,
++    };
++    let result = coordinator.coordinate(&request).unwrap();
++    assert_eq!(result.consensus_tokens.len(), 2);
++    assert_eq!(result.consensus_tokens[0].text(), "def");
++    assert_eq!(result.consensus_tokens[1].text(), " fibo");
++    assert!(result.divergent_nodes.is_empty());
++}
