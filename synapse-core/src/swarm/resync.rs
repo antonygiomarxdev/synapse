@@ -1,17 +1,17 @@
 use crate::identity::NodeId;
-use crate::swarm::Token;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Per-request and chronic divergence tracking.
 ///
 /// Nodes that diverge too often in a single request are expelled.
-/// Chronic divergers (10+ flags in 24 hours) are flagged for slashing.
+/// Chronic divergers (10+ flags within `chronic_window_hours`) are flagged for slashing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReSyncPolicy {
     divergence_limit: u32,
     expulsion_limit: u32,
     chronic_flag_threshold: u32,
+    chronic_window_hours: u32,
     per_request_divergences: HashMap<NodeId, u32>,
     chronic_flags: HashMap<NodeId, u32>,
 }
@@ -22,6 +22,7 @@ impl Default for ReSyncPolicy {
             divergence_limit: 3,
             expulsion_limit: 3,
             chronic_flag_threshold: 10,
+            chronic_window_hours: 24,
             per_request_divergences: HashMap::new(),
             chronic_flags: HashMap::new(),
         }
@@ -30,18 +31,24 @@ impl Default for ReSyncPolicy {
 
 impl ReSyncPolicy {
     /// Creates a policy with custom limits.
-    pub fn new(divergence_limit: u32, expulsion_limit: u32, chronic_flag_threshold: u32) -> Self {
+    pub fn new(
+        divergence_limit: u32,
+        expulsion_limit: u32,
+        chronic_flag_threshold: u32,
+        chronic_window_hours: u32,
+    ) -> Self {
         Self {
             divergence_limit,
             expulsion_limit,
             chronic_flag_threshold,
+            chronic_window_hours,
             per_request_divergences: HashMap::new(),
             chronic_flags: HashMap::new(),
         }
     }
 
     /// Records a divergence for a node in the current request.
-    pub fn record_divergence(&mut self, node_id: NodeId, _token: &Token) {
+    pub fn record_divergence(&mut self, node_id: NodeId) {
         *self.per_request_divergences.entry(node_id).or_insert(0) += 1;
     }
 
@@ -80,30 +87,30 @@ impl ReSyncPolicy {
     pub fn chronic_flag_threshold(&self) -> u32 {
         self.chronic_flag_threshold
     }
+
+    /// Number of hours in the chronic-flag window.
+    pub fn chronic_window_hours(&self) -> u32 {
+        self.chronic_window_hours
+    }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::identity::NodeId;
-    use crate::swarm::Token;
 
     fn node(id: u8) -> NodeId {
         let bytes = [id; 32];
         NodeId::from_public_key(&bytes)
     }
 
-    fn token(text: &str) -> Token {
-        Token::new(text, -0.5).unwrap()
-    }
-
     #[test]
     fn node_expelled_after_three_divergences() {
         let mut policy = ReSyncPolicy::default();
         let n = node(1);
-        policy.record_divergence(n, &token("a"));
-        policy.record_divergence(n, &token("b"));
+        policy.record_divergence(n);
+        policy.record_divergence(n);
         assert!(!policy.should_expel(&n));
-        policy.record_divergence(n, &token("c"));
+        policy.record_divergence(n);
         assert!(policy.should_expel(&n));
     }
 
@@ -111,9 +118,9 @@ mod tests {
     fn expulsion_resets_after_request_boundary() {
         let mut policy = ReSyncPolicy::default();
         let n = node(1);
-        policy.record_divergence(n, &token("a"));
-        policy.record_divergence(n, &token("b"));
-        policy.record_divergence(n, &token("c"));
+        policy.record_divergence(n);
+        policy.record_divergence(n);
+        policy.record_divergence(n);
         assert!(policy.should_expel(&n));
         policy.reset_request();
         assert!(!policy.should_expel(&n));
@@ -137,7 +144,7 @@ mod tests {
         let a = node(1);
         let b = node(2);
         for _ in 0..3 {
-            policy.record_divergence(a, &token("x"));
+            policy.record_divergence(a);
         }
         assert!(policy.should_expel(&a));
         assert!(!policy.should_expel(&b));
