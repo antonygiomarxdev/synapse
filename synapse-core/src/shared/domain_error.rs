@@ -61,6 +61,8 @@ pub enum DomainError {
     #[error("signature verification failed")]
     SignatureVerificationFailed,
 
+    #[error("invalid route: {reason}")]
+    InvalidRoute { reason: String },
     #[error("catalog load failed: {reason}")]
     CatalogLoadFailed { reason: String },
 }
@@ -135,6 +137,12 @@ mod tests {
     fn invalid_token_text_display() {
         let err = DomainError::InvalidTokenText { reason: "too long".into() };
         assert_eq!(err.to_string(), "invalid token text: too long");
+    }
+
+    #[test]
+    fn invalid_route_display() {
+        let err = DomainError::InvalidRoute { reason: "empty steps".into() };
+        assert_eq!(err.to_string(), "invalid route: empty steps");
     }
 }
 
