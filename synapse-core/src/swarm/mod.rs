@@ -1,5 +1,6 @@
 pub mod consensus;
 pub mod dag;
+pub mod infrastructure;
 pub mod ports;
 pub mod resync;
 pub mod speculative;
