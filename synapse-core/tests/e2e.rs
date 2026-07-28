@@ -1,19 +1,15 @@
-/// Verifies the server boots via the library's [`serve()`] function.
+/// Verifies the server boots and responds to health checks.
 ///
-/// Catches the `serve → ()` mutation: if serve() is empty, the server
-/// won't bind and the health check fails with a connection error.
+/// Calls the library's `serve_on()` to exercise the same code path
+/// used by `serve()` and `main()`. Catches `serve_on → ()` in
+/// mutation tests.
 #[tokio::test]
 async fn server_starts_and_responds_to_health() {
-    // Bind before spawn so we hold the address
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
-    // Spawn the server function — this exercises the same code that
-    // main() calls, catching `serve → ()` in mutation tests.
     tokio::spawn(async move {
-        // Use serve_on approach through the listener directly
-        let app = synapse_core::gateway::api::build_router();
-        axum::serve(listener, app).await.unwrap();
+        synapse_core::gateway::api::serve_on(listener).await;
     });
 
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -44,8 +40,7 @@ async fn server_returns_404_for_unknown_routes() {
     let addr = listener.local_addr().unwrap();
 
     tokio::spawn(async move {
-        let app = synapse_core::gateway::api::build_router();
-        axum::serve(listener, app).await.unwrap();
+        synapse_core::gateway::api::serve_on(listener).await;
     });
 
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
