@@ -1,4 +1,4 @@
-name: CI
+name: CI — The Quality Gauntlet
 
 on:
   push:
@@ -11,7 +11,7 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
-  # ─── Rust ────────────────────────────────────────────────
+  # ─── Rust: Lint ──────────────────────────────────────────
 
   rust-lint:
     runs-on: ubuntu-latest
@@ -23,12 +23,30 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
 
+  # ─── Rust: Test + Coverage ───────────────────────────────
+
   rust-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools
+      - uses: taiki-e/install-action@cargo-llvm-cov
       - run: cargo test
+      - run: cargo llvm-cov --fail-under-lines 80 --fail-under-functions 80
+
+  # ─── Rust: Mutation Testing ──────────────────────────────
+
+  rust-mutants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-mutants
+      - run: cargo mutants -- --workspace
+
+  # ─── Rust: Security Audit ────────────────────────────────
 
   rust-audit:
     runs-on: ubuntu-latest
@@ -40,7 +58,7 @@ jobs:
       - uses: taiki-e/install-action@cargo-audit
       - run: cargo audit
 
-  # ─── Python ──────────────────────────────────────────────
+  # ─── Python: Lint ────────────────────────────────────────
 
   python-lint:
     runs-on: ubuntu-latest
@@ -50,6 +68,8 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install ruff
       - run: cd synapse-runtime && ruff check . && ruff format --check .
+
+  # ─── Python: Security ────────────────────────────────────
 
   python-audit:
     runs-on: ubuntu-latest

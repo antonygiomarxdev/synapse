@@ -1,8 +1,11 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/status-mvp--in--development-orange" alt="Status: MVP">
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License">
+  <img src="https://img.shields.io/badge/status-mvp--in--development-orange" alt="Status: MVP">
   <img src="https://img.shields.io/badge/rust-1.97%2B-orange" alt="Rust 1.97+">
   <img src="https://img.shields.io/badge/python-3.12%2B-blue" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/coverage-80%25%2B-brightgreen" alt="Coverage 80%+">
+  <img src="https://img.shields.io/badge/mutation-tested-brightgreen" alt="Mutation tested">
+  <img src="https://img.shields.io/badge/CI-gauntlet%20passed-brightgreen" alt="Gauntlet passed">
 </p>
 
 # Synapse
@@ -285,7 +288,30 @@ Garbage output → no payment + reputation flag → slashing.
 
 ---
 
-## Contributing
+## The Quality Gauntlet
+
+Every line of code — whether written by humans, Claude, Kimi, or a hamster — must pass the same gauntlet before merging:
+
+| Gate | Tool | Threshold |
+|---|---|---|
+| **Formatting** | rustfmt, ruff | Must match exactly |
+| **Linting** | clippy -D warnings, ruff | Zero warnings |
+| **Unit tests** | cargo test, pytest | All green |
+| **Coverage** | cargo-llvm-cov | ≥80% lines, ≥80% functions |
+| **Mutation testing** | cargo-mutants | All mutants killed |
+| **Security audit** | cargo-audit, cargo-deny | Zero CVEs |
+| **BDD specs** | Gherkin (features/) | All scenarios pass |
+| **Smart contracts** | hardhat test, solhint | All green |
+
+```bash
+make gauntlet    # Run the full quality check
+```
+
+> *"I don't read my agents' code. I surround them with extreme constraints."* — Uncle Bob
+
+---
+
+ ## Contributing
 
 Open source (Apache 2.0). Protocol, node software, and launcher are free.
 

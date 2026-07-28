@@ -1,0 +1,6 @@
+# Code coverage thresholds
+# Run: cargo llvm-cov --html --fail-under-lines 80
+
+[coverage]
+fail-under-lines = 80
+fail-under-functions = 80

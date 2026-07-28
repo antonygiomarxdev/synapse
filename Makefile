@@ -1,10 +1,8 @@
-.PHONY: all build test lint lint-fix audit clean dev
+.PHONY: all build test lint lint-fix audit clean dev gauntlet
 
 all: build
 
 # ─── Rust ───────────────────────────────────────────────────
-
-SRC = synapse-core
 
 build:
 	cargo build --release
@@ -12,8 +10,11 @@ build:
 test:
 	cargo test
 
-test-gateway:
-	cargo test --test '*' gateway::
+test-coverage:
+	cargo llvm-cov --fail-under-lines 80 --fail-under-functions 80
+
+test-mutants:
+	cargo mutants -- --workspace
 
 lint:
 	cargo fmt --check
@@ -54,6 +55,15 @@ contracts-test:
 contracts-lint:
 	cd contracts/stake && npx solhint 'src/**/*.sol'
 
+# ─── The Quality Gauntlet ───────────────────────────────────
+# Every PR must pass this before merge.
+# Idea: Uncle Bob — surround agents with extreme constraints.
+
+gauntlet: lint test test-coverage audit runtime-lint contracts-test contracts-lint
+	@echo "============================================"
+	@echo "  GAUNTLET PASSED — code is ready to merge"
+	@echo "============================================"
+
 # ─── Full Suite ─────────────────────────────────────────────
 
 test-all: test runtime-test contracts-test
@@ -62,7 +72,7 @@ lint-all: lint runtime-lint contracts-lint
 
 audit-all: audit runtime-audit
 
-# ─── Dev Server ─────────────────────────────────────────────
+# ─── Dev ────────────────────────────────────────────────────
 
 dev:
 	cargo run --release
