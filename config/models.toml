@@ -4,17 +4,17 @@
 # Community proposals via GitHub PR welcome.
 
 [[models]]
-id = "kimi-k27-code"
-name = "Kimi K2.7 Code"
-hf_repo = "moonshotai/Kimi-K2.7-Code"
+id = "kimi-k3"
+name = "Kimi K3"
+hf_repo = "moonshotai/Kimi-K3"
 sha256 = ""
-experts = 384
-active_per_token = 32
+experts = 896
+active_per_token = 16
 expert_size_gb = 1.5
-shared_params_gb = 8.0
-context = 131072
+shared_params_gb = 12.0
+context = 1000000
 license = "MIT"
-description = "Moonshot AI's code-optimized MoE. ~1T total params, ~30B active. Specialized for software development tasks."
+description = "Moonshot AI's frontier MoE. 2.8T total params, ~103B active, 896 experts, KDA linear attention, 1M context. Open-weight (MIT modified)."
 
 [[models]]
 id = "mixtral-8x7b"

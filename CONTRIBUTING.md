@@ -85,7 +85,7 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 feat: add token-level consensus voting
 fix: prevent reputation overflow at boundary
 test: add property tests for pricing route assembly
-docs: update model catalog with Kimi K2.7
+docs: update model catalog with Kimi K3
 chore: bump libp2p to 0.56
 ```
 

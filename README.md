@@ -20,19 +20,20 @@ Synapse turns thousands of consumer GPUs into a single distributed inference swa
 
 ## Why Synapse?
 
-MoE (Mixture-of-Experts) models like **Kimi K2.7 Code**, DeepSeek-V2, and Mixtral are the future of LLM architecture. They work by activating only a small fraction of their total parameters per token — typically 1-2%. This means 98% of the model sits idle at any moment.
+MoE (Mixture-of-Experts) models like **Kimi K3**, DeepSeek-V2, and Mixtral are the future of LLM architecture. They work by activating only a small fraction of their total parameters per token — typically 1-2%. This means 98% of the model sits idle at any moment.
 
 **Synapse exploits this property.** Instead of cramming the entire model into one datacenter GPU, the swarm distributes experts across hundreds of consumer GPUs. Each node holds just a handful of experts. Requests flow through the swarm, activating only the experts they need.
 
-### Example: Kimi K2.7 Code on Synapse
+### Example: Kimi K3 on Synapse
 
-Kimi K2.7 Code is a ~1 trillion parameter MoE model from Moonshot AI, optimized for coding. It has 384 experts, with 32 active per token. Running the full model requires datacenter hardware.
+Kimi K3 is a 2.8 trillion parameter MoE model from Moonshot AI — the frontier of open-weight AI. It has 896 experts, with only 16 active per token (~103B active parameters). Running the full model requires 8× AMD MI355X GPUs or similar datacenter hardware.
 
 With Synapse:
-- 192 consumer GPUs each hold 2 experts (~11GB VRAM in 4-bit)
-- Each token activates only 32 experts across ~16 nodes
+- 448 consumer GPUs each hold 2 experts (~3GB VRAM each in MXFP4)
+- Each token activates only 16 experts across ~8 nodes
+- KDA linear attention eliminates the growing KV cache — ideal for P2P distribution
 - The swarm self-organizes: hot experts auto-replicate, cold experts stay dormant
-- A developer in any country can use Kimi K2.7 Code without an API key, rate limit, or regional restriction
+- A developer in any country can use Kimi K3 without an API key, rate limit, or regional restriction
 
 ### The Pitch
 
@@ -67,9 +68,8 @@ Client: "Write a Rust function..."
      │    axum + tokio     │
      └──┬───┬───┬───┬───┬──┘
         │   │   │   │   │
-   ┌────▼┐ ┌▼────┐ ┌▼────┐ ┌▼────┐ ┌▼────┐
-   │Node1│ │Node2│ │Node3│ │Node4│ │Node5│
-   │K2.7 │ │K2.7 │ │K2.7 │ │K2.7 │ │K2.7 │
+   │Kimi│ │Kimi│ │Kimi│ │Kimi│ │Kimi│
+   │K3  │ │K3  │ │K3  │ │K3  │ │K3  │
    └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘
       │       │       │       │       │
    "fn "   "fn "   "fn "   "pub"   "fn "
@@ -86,7 +86,7 @@ Client: "Write a Rust function..."
 ### Swarm DAG (Batch)
 
 ```
-Kimi K2.7 Code: 384 experts, 32 active per token
+Kimi K3: 896 experts, 16 active per token
 
   Expert #12 held by: Node A ($0.08/1M tokens), Node B ($0.11)
   Expert #47 held by: Node C ($0.09), Node D ($0.14)
@@ -95,7 +95,6 @@ Kimi K2.7 Code: 384 experts, 32 active per token
   Client pays catalog price (gateway fee included)
 
   Batch of 100 requests flows through expert DAG simultaneously
-```
 
 - True expert distribution — each node only loads 2-5 experts
 - Gateway is the market maker: miners compete on price
@@ -170,7 +169,7 @@ cargo test
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "kimi-k27-code",
+    "model": "kimi-k3",
     "priority": "realtime",
     "swarm_size": 5,
     "messages": [{"role": "user", "content": "Write a Rust function to merge two sorted arrays"}]
@@ -181,8 +180,7 @@ Response:
 ```json
 {
   "id": "chatcmpl-0001",
-  "model": "kimi-k27-code",
-  "choices": [{
+  "model": "kimi-k3",
     "index": 0,
     "message": {
       "role": "assistant",
@@ -226,9 +224,8 @@ Curated and verified. Community proposals via PR.
 
 | Model | Params | Experts | Active | 🔥 For | License |
 |---|---|---|---|---|---|
-| **Kimi K2.7 Code** | ~1T | 384 | 32 | Software dev | MIT |
 | Mixtral 8x7B | 46.7B | 8 | 2 | General purpose | Apache 2.0 |
-| Mixtral 8x22B | 141B | 8 | 2 | Complex reasoning | Apache 2.0 |
+| **Kimi K3** | 2.8T | 896 | 16 | Frontier AI | MIT |
 | DeepSeek-V2 Lite | 16B | 64 | 6 | Lightweight edge | MIT |
 | Qwen2.5-MoE | 57B | 64 | 8 | Multilingual | Apache 2.0 |
 
@@ -242,7 +239,7 @@ Client pays $0.40/1M tokens → Gateway keeps 15-20% → Miner receives remainde
 Example (Kimi K2.7 Code, expert #12):
   $0.08/1M tokens × 1000 requests × 1000 tokens = $0.08/batch
   Average: $2-12/day depending on GPU, demand, and uptime
-
+Example (Kimi K3, expert #12):
 You earn for verified work only.
 Garbage output → no payment + reputation flag → slashing.
 ```
@@ -277,7 +274,7 @@ Garbage output → no payment + reputation flag → slashing.
 - [ ] USDC payments on L2
 
 **V2 — Scale & Privacy (2027)**
-- [ ] Kimi K2.7 Code (~192 node swarm)
+- [ ] Kimi K3 swarm at scale (~448 nodes)
 - [ ] Split Inference privacy
 - [ ] Client SDKs (Python, TypeScript, Rust)
 

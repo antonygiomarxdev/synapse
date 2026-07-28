@@ -14,12 +14,12 @@ pub struct ModelEntry {
 
 pub async fn list_models() -> Json<Vec<ModelEntry>> {
     Json(vec![ModelEntry {
-        id: "kimi-k27-code",
-        name: "Kimi K2.7 Code",
-        total_params: "~1T",
-        active_params: "~30B",
-        experts: 384,
-        active_per_token: 32,
-        context: 131072,
+        id: "kimi-k3",
+        name: "Kimi K3",
+        total_params: "2.8T",
+        active_params: "~103B",
+        experts: 896,
+        active_per_token: 16,
+        context: 1_000_000,
     }])
 }

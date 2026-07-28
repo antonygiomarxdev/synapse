@@ -50,7 +50,7 @@ synapse/
 │   ├── src/                 #   StakeManager.sol
 │   └── test/                #   Hardhat tests
 ├── config/
-│   ├── models.toml          #   Curated catalog (Kimi K2.7, Mixtral, etc.)
+│   ├── models.toml          #   Curated catalog (Kimi K3, Mixtral, etc.)
 │   └── default.toml         #   Node defaults (VRAM, pricing, STUN)
 ├── features/                #   Gherkin BDD specs
 ├── .github/workflows/       #   CI (7 jobs)

@@ -4,7 +4,7 @@ Feature: Speculative Swarm Consensus
   So that I can trust the swarm output without reading individual node results
 
   Background:
-    Given a swarm of 5 nodes running Kimi K2.7 Code
+    Given a swarm of 5 nodes running Kimi K3
     And all nodes have identical model weights (SHA256 verified)
     And each node uses a different random seed
 

@@ -66,7 +66,7 @@ These models are the V1 catalog. All are open-weight and fit the swarm architect
 | **Mixtral 8x22B** | 141B | 8 | 2 | ~9GB | ~6GB | 4 nodes (Tier Full) |
 | **Qwen2.5-MoE** | 57B | 64 | 8 | ~0.5GB | ~2GB | 32 nodes |
 | **DeepSeek-V2 Lite** | 16B | 64 | 6 | ~0.15GB | ~1GB | 32 nodes |
-| **Kimi K2.7 Code** | ~1T | ~384 | ~32 | ~1.5GB | ~8GB | ~192 nodes |
+| **Kimi K3** | 2.8T | 896 | 16 | ~1.5GB | ~12GB | ~448 nodes |
 
 > **Note on VRAM:** In addition to expert weights, every node must load shared parameters (embeddings, attention layers, gate network — loaded once regardless of expert count). Actual VRAM = `(num_experts × expert_size) + shared_params`.
 
@@ -78,8 +78,8 @@ Dense models with frontier quality require >70GB VRAM — datacenter territory. 
 
 ```
 V1 (2026): Mixtral 8x7B — 4 nodes, 2 experts each
-V2 (2027): Kimi K2.7 Code — ~192 nodes, 2 experts each  
-V3 (2028+): Kimi K3 class — ~448 nodes, 2 experts each
+V2 (2027): Kimi K3 — ~448 nodes, 2 experts each
+V3 (2028+): Next-gen MoE — protocol scales with model expert count
 ```
 
 The protocol is identical. Only the swarm size changes.
@@ -668,7 +668,7 @@ Helium / Filecoin model: open protocol, reference commercial implementation.
 - [ ] Network partition tolerance
 
 ### V2 — Scale & Privacy (2027)
-- [ ] Kimi K2.7 Code (~192 nodes)
+- [ ] Kimi K3 (~448 nodes)
 - [ ] Split Inference privacy mode
 - [ ] Full reputation system (Platinum, graduated penalties)
 - [ ] Community catalog voting
