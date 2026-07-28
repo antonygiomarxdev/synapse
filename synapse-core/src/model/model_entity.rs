@@ -22,23 +22,31 @@ impl ModelEntity {
 mod tests {
     use super::*;
 
+    fn kimi() -> ModelId {
+        ModelId::new("kimi-k3").unwrap()
+    }
+
+    fn mixtral() -> ModelId {
+        ModelId::new("mixtral-8x7b").unwrap()
+    }
+
     #[test]
     fn model_entity_creation() {
-        let model = ModelEntity::new(ModelId::new("kimi-k3"), 896, 16);
+        let model = ModelEntity::new(kimi(), 896, 16);
         assert_eq!(model.experts, 896);
         assert_eq!(model.active_per_token, 16);
     }
 
     #[test]
     fn kimi_k3_sparsity_is_below_2_percent() {
-        let model = ModelEntity::new(ModelId::new("kimi-k3"), 896, 16);
+        let model = ModelEntity::new(kimi(), 896, 16);
         assert!(model.sparsity() < 0.02);
         assert!((model.sparsity() - 0.01785).abs() < 0.001);
     }
 
     #[test]
     fn mixtral_sparsity() {
-        let model = ModelEntity::new(ModelId::new("mixtral-8x7b"), 8, 2);
+        let model = ModelEntity::new(mixtral(), 8, 2);
         assert_eq!(model.sparsity(), 0.25);
     }
 }
