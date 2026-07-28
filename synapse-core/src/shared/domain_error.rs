@@ -49,6 +49,12 @@ pub enum DomainError {
     #[error("invalid token: {reason}")]
     InvalidToken { reason: String },
 
+    #[error("invalid consensus quorum: {quorum} for swarm_size {swarm_size}")]
+    InvalidConsensusQuorum { quorum: usize, swarm_size: usize },
+
+    #[error("no consensus reached at token index {token_index}")]
+    NoConsensus { token_index: usize },
+
     #[error("storage error: {message}")]
     StorageError { message: String },
 
@@ -130,4 +136,16 @@ mod tests {
         let err = DomainError::InvalidTokenText { reason: "too long".into() };
         assert_eq!(err.to_string(), "invalid token text: too long");
     }
+}
+
+#[test]
+fn invalid_consensus_quorum_display() {
+    let err = DomainError::InvalidConsensusQuorum { quorum: 0, swarm_size: 5 };
+    assert_eq!(err.to_string(), "invalid consensus quorum: 0 for swarm_size 5");
+}
+
+#[test]
+fn no_consensus_display() {
+    let err = DomainError::NoConsensus { token_index: 7 };
+    assert_eq!(err.to_string(), "no consensus reached at token index 7");
 }
