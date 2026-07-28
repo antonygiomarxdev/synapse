@@ -6,28 +6,157 @@ Synapse is a **decentralized P2P inference protocol for Mixture-of-Experts (MoE)
 
 **Multi-language monorepo:** Rust core (P2P + gateway), Python vLLM runtime (subprocess), Solidity staking contracts (L2).
 
-## Architecture & Data Flow
+## Non-Negotiable Design Principles
 
-```
-Client → axum Gateway (Rust, :8000) → Swarm Core (Rust)
-                                          │
-                                    libp2p Kademlia DHT
-                                          │
-                                    Compute Nodes (Python vLLM)
-                                          │
-                                    L2 Smart Contracts (Solidity)
+**These are immutable. Every line of code in this repository MUST comply.**
+
+### DDD (Domain-Driven Design)
+- **Domain layer is PURE.** Zero I/O, zero framework deps, zero crypto, zero network. Domain types (value objects, entities, aggregates) are plain Rust structs/enums with no side effects. Exceptions: `sha2` for hash derivation is pure computation — allowed.
+- **Application ports are traits.** `KeySigner`, `IdentityStore`, `InferenceEngine`, `StakeContract` — all I/O boundaries are defined as traits in domain modules. Domain NEVER imports infrastructure.
+- **Infrastructure adapters implement traits.** `Ed25519Signer`, `DhtIdentityStore`, `VllmEngine` — each lives in an `infrastructure/` subdirectory and implements exactly one application port.
+- **Aggregates enforce invariants.** `Node::register` validates stake address format. `Catalog::register` rejects duplicates. No aggregate can enter an invalid state.
+- **Domain events for state changes.** Every aggregate mutation emits a `DomainEvent` variant. Infrastructure subscribes, domain doesn't care who listens.
+- **Newtypes over primitives.** `NodeId([u8; 32])`, not `String`. `ModelId(String)` with validation. No naked primitives in domain signatures.
+
+### Clean Architecture
+- **Dependency rule: outer layers depend on inner, never reverse.** Domain → Application (ports) → Infrastructure (adapters) → Presentation (axum).
+- **File-level module isolation.** Each domain concept gets its own file: `node_id.rs`, `key_pair.rs`, `node.rs`, `ports.rs`. No "everything in mod.rs" patterns.
+- **Re-exports from module root.** `pub use node_id::NodeId;` in `identity/mod.rs` — consumers import from `crate::identity::NodeId`, never from nested paths.
+- **Infrastructure NEVER leaks into domain.** `use ed25519_dalek` is ONLY allowed in `identity/infrastructure/`. A `use` of any external crypto/libp2p/axum crate in a domain file is a build failure.
+
+### TDD (Test-Driven Development)
+- **RED-GREEN-REFACTOR, always.** Write the failing test FIRST, run it to confirm it fails, then write minimum code to pass, then refactor.
+- **Tests inline with source.** `#[cfg(test)] mod tests` at the bottom of every source file. No separate `tests/` directory for unit tests.
+- **Test behavior, not implementation.** Assert on domain outcomes (events emitted, state transitions, error variants), not on internal method calls.
+- **Every public function has at least one test.** Every `pub fn` in domain modules must have a corresponding `#[test]` that exercises it.
+- **Test names describe the scenario.** `register_rejects_empty_stake_address`, not `test_register_2`.
+- **No mocking in domain tests.** Domain tests are pure — construct inputs, call functions, assert outputs. Mocks are for infrastructure adapter tests only.
+
+### Clean Code
+- **Descriptive names.** `derive_node_id`, not `dni`. `reputation_below_threshold`, not `rep_chk`.
+- **Small files.** One primary type per file. If a file exceeds ~250 lines, split it.
+- **Doc comments on all public items.** `///` on every `pub struct`, `pub fn`, `pub trait`, `pub enum`. First line is a summary sentence.
+- **No commented-out code.** Delete it. Git remembers.
+- **No dead code.** `cargo clippy -- -D warnings` catches this. Zero warnings allowed.
+- **thiserror for errors.** Never implement `Display` or `Error` by hand. Use `#[derive(Error)]`.
+- **Conventional Commits.** `feat(scope): description`, `fix(scope): description`, `test(scope): description`.
+
+## Domain Architecture
+
+### Layered Clean Architecture (DDD)
+
+Every module follows the same pattern: **pure domain** → **application ports** → **infrastructure adapters**.
+Dependencies point inward only. Infrastructure never leaks into domain.
+
+```mermaid
+flowchart LR
+    subgraph Presentation["Presentation (axum)"]
+        Api["api.rs — HTTP routes"]
+        Middleware["middleware.rs — auth, rate-limit"]
+    end
+
+    subgraph Infrastructure["Infrastructure"]
+        Ed25519["identity/infrastructure/ed25519_signer.rs"]
+        Dht["dht/kademlia.rs — libp2p DHT"]
+        Runtime["synapse-runtime/ — vLLM subprocess"]
+        Contract["contracts/stake/StakeManager.sol"]
+    end
+
+    subgraph Ports["Application Ports (Traits)"]
+        KeySigner["KeySigner — sign/verify"]
+        IdentityStore["IdentityStore — save/find Node"]
+        Inference["InferenceEngine — generate()"]
+        StakeContract["StakeContract — stake/slash"]
+    end
+
+    subgraph Domain["Pure Domain (zero I/O)"]
+        Identity["identity/ — NodeId, KeyPair, Node"]
+        Model["model/ — ModelId, ExpertId, Catalog"]
+        Swarm["swarm/ — Consensus, DAG, Speculative"]
+        Economic["economic/ — Reputation, Pricing"]
+        Shared["shared/ — DomainError, DomainEvent"]
+    end
+
+    Presentation -->|"depends on"| Domain
+    Presentation -->|"uses"| Ports
+    Ports -->|"implemented by"| Infrastructure
+    Infrastructure -->|"depends on"| Domain
+    Domain --> Domain
 ```
 
-- **Gateway** (`synapse-core/src/gateway/`): axum HTTP server with OpenAI-compatible endpoints. Market maker pricing. Routes requests to swarm.
-- **Swarm Core** (`synapse-core/src/swarm/`): Consensus (ensemble voting + statistical audit), Speculative engine (realtime), DAG engine (batch).
-- **DHT** (`synapse-core/src/dht/`): Kademlia-based expert registry, co-activation heat map, node discovery.
-- **Economic** (`synapse-core/src/economic/`): Reputation scoring (0-1000, 4 tiers), graduated slashing, route assembly.
-- **Compute Node** (`synapse-runtime/`): Python subprocess communicating via Unix socket + protobuf through `InferencePort` trait. V1: vLLM backend. V2+: llama.cpp, SGLang.
-- **Contracts** (`contracts/stake/`): StakeManager.sol — USDC staking, flagging, graduated slashing, banning.
+### Identity Module (Phase 1, Issue #1)
+
+The identity module is the foundational aggregate: `NodeId` derives from `KeyPair`, `Node` binds them with reputation.
+
+```mermaid
+classDiagram
+    class NodeId {
+        +[u8; 32] inner
+        +from_public_key(pk) NodeId
+        +from_hex(hex) Option~NodeId~
+        +to_hex() String
+        +as_bytes() [u8; 32]
+    }
+
+    class KeyPair {
+        +[u8; 32] public
+        +[u8; 32] secret
+        +generate() KeyPair
+        +public_key_bytes() [u8; 32]
+    }
+
+    class Node {
+        +NodeId node_id
+        +String stake_address
+        +u16 reputation
+        +register(keypair, stake) Result~(Node, Vec~DomainEvent~)~
+        +derive_node_id(keypair) NodeId
+        +update_reputation(score) Option~DomainEvent~
+        +meets_reputation(min) bool
+    }
+
+    class KeySigner {
+        <<trait>>
+        +sign(data) Vec~u8~
+        +verify(data, sig) bool
+        +public_key_bytes() [u8; 32]
+    }
+
+    class IdentityStore {
+        <<trait>>
+        +save(node) Result
+        +find(id) Option~Node~
+        +find_by_stake_address(addr) Option~Node~
+        +list_all() Vec~Node~
+    }
+
+    class Ed25519Signer {
+        +sign(data) Vec~u8~
+        +verify(data, sig) bool
+    }
+
+    class DomainEvent {
+        <<enum>>
+        NodeRegistered
+        ReputationChanged
+        ...
+    }
+
+    class DomainError {
+        <<enum>>
+        InvalidNodeId
+        InvalidModelId
+        ...
+    }
+
+    NodeId --> KeyPair : derives from SHA256
+    Node --> NodeId : has
+    Node --> DomainEvent : emits
+    Ed25519Signer ..|> KeySigner : implements
+    Node --> DomainError : returns on failure
+```
 
 ### Two Swarm Modes
-- **Speculative Swarm (realtime):** N nodes run full model independently, majority vote per token. Latency = single-node latency.
-- **Swarm DAG (batch):** True expert distribution. Nodes hold 2-5 experts each. Requests flow through expert graph.
 
 ## Key Directories
 
@@ -94,7 +223,6 @@ make gauntlet
 - **Error handling:** `thiserror` for domain errors. `Result<Json<T>, StatusCode>` pattern in axum handlers.
 - **Async:** `tokio` (full features). `#[tokio::main]` on binary, `#[tokio::test]` on async tests.
 - **Testing:** Unit tests inline with `#[cfg(test)] mod tests`. Integration tests planned in `tests/` directory. Property testing via `proptest`.
-- **DDD pattern:** Pure domain layer (no I/O), application ports as traits, infrastructure adapters in separate files. Example: `NodeId` is a `[u8; 32]` newtype with SHA-256 derivation — pure, no IO.
 - **Protobuf:** `synapse.proto` defines 8 message types (DhtQuery, NodeAnnounce, InferenceRequest, ConsensusVote, etc.). Package: `synapse.proto`.
 
 ### Python
