@@ -25,6 +25,15 @@ Client → axum Gateway (Rust, :8000) → Swarm Core (Rust)
 - **Compute Node** (`synapse-runtime/`): Python subprocess communicating via Unix socket + protobuf through `InferencePort` trait. V1: vLLM backend. V2+: llama.cpp, SGLang.
 - **Contracts** (`contracts/stake/`): StakeManager.sol — USDC staking, flagging, graduated slashing, banning.
 
+## Non-Negotiable Design Principles
+
+These apply to every line of code. No exceptions.
+
+- **DDD: Pure domain layer** — zero I/O, zero framework deps, zero crypto. Domain types are plain structs/enums. I/O boundaries are traits (ports) in domain modules. Infrastructure adapters live in `infrastructure/` subdirectories.
+- **Clean Architecture: Dependencies point inward** — Presentation (axum) → Ports (traits) → Infrastructure (adapters) → Domain. Domain never imports infrastructure.
+- **TDD: Red-Green-Refactor** — Write the failing test first, confirm it fails, then implement, then refactor. Tests inline with source at `#[cfg(test)] mod tests`.
+- **Clean Code: Every public item gets `///` doc comments.** Test names describe the scenario. No dead code. `thiserror` for errors, never manual `Display`/`Error`. Conventional Commits.
+
 ### Two Swarm Modes
 - **Speculative Swarm (realtime):** N nodes run full model independently, majority vote per token. Latency = single-node latency.
 - **Swarm DAG (batch):** True expert distribution. Nodes hold 2-5 experts each. Requests flow through expert graph.
@@ -94,7 +103,6 @@ make gauntlet
 - **Error handling:** `thiserror` for domain errors. `Result<Json<T>, StatusCode>` pattern in axum handlers.
 - **Async:** `tokio` (full features). `#[tokio::main]` on binary, `#[tokio::test]` on async tests.
 - **Testing:** Unit tests inline with `#[cfg(test)] mod tests`. Integration tests planned in `tests/` directory. Property testing via `proptest`.
-- **DDD pattern:** Pure domain layer (no I/O), application ports as traits, infrastructure adapters in separate files. Example: `NodeId` is a `[u8; 32]` newtype with SHA-256 derivation — pure, no IO.
 - **Protobuf:** `synapse.proto` defines 8 message types (DhtQuery, NodeAnnounce, InferenceRequest, ConsensusVote, etc.). Package: `synapse.proto`.
 
 ### Python
