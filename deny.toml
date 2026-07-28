@@ -9,7 +9,6 @@ notice = "none"
 ignore = []
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "Apache-2.0",
     "MIT",
@@ -18,8 +17,11 @@ allow = [
     "ISC",
     "MPL-2.0",
     "Unicode-3.0",
+    "Unlicense",
+    "CC0-1.0",
+    "OpenSSL",
+    "Zlib",
 ]
-copyleft = "deny"
 
 [bans]
 multiple-versions = "warn"
