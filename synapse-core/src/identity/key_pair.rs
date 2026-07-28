@@ -1,3 +1,4 @@
+use super::ED25519_KEY_BYTES;
 use rand::RngCore;
 
 /// A cryptographic key pair for a Synapse node.
@@ -11,8 +12,8 @@ use rand::RngCore;
 /// treats them opaquely.
 #[derive(Debug, Clone)]
 pub struct KeyPair {
-    pub public: [u8; 32],
-    pub secret: [u8; 32],
+    pub public: [u8; ED25519_KEY_BYTES],
+    pub secret: [u8; ED25519_KEY_BYTES],
 }
 
 impl KeyPair {
@@ -23,8 +24,8 @@ impl KeyPair {
     /// Infrastructure adapters validate that the key material is usable
     /// for their specific algorithm.
     pub fn generate() -> Self {
-        let mut public = [0u8; 32];
-        let mut secret = [0u8; 32];
+        let mut public = [0u8; ED25519_KEY_BYTES];
+        let mut secret = [0u8; ED25519_KEY_BYTES];
         let mut rng = rand::thread_rng();
         rng.fill_bytes(&mut public);
         rng.fill_bytes(&mut secret);
@@ -32,12 +33,12 @@ impl KeyPair {
     }
 
     /// Returns a reference to the 32-byte public key.
-    pub fn public_key_bytes(&self) -> &[u8; 32] {
+    pub fn public_key_bytes(&self) -> &[u8; ED25519_KEY_BYTES] {
         &self.public
     }
 
     /// Returns a reference to the 32-byte secret key.
-    pub fn secret_key_bytes(&self) -> &[u8; 32] {
+    pub fn secret_key_bytes(&self) -> &[u8; ED25519_KEY_BYTES] {
         &self.secret
     }
 }
@@ -51,6 +52,7 @@ impl PartialEq for KeyPair {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::identity::test_bytes;
 
     #[test]
     fn generate_produces_32_byte_keys() {
@@ -76,31 +78,31 @@ mod tests {
 
     #[test]
     fn same_keys_are_equal() {
-        let kp1 = KeyPair { public: [1u8; 32], secret: [2u8; 32] };
-        let kp2 = KeyPair { public: [1u8; 32], secret: [2u8; 32] };
+        let kp1 = KeyPair { public: test_bytes(1), secret: test_bytes(2) };
+        let kp2 = KeyPair { public: test_bytes(1), secret: test_bytes(2) };
         assert_eq!(kp1, kp2);
     }
 
     #[test]
     fn different_public_not_equal() {
-        let kp1 = KeyPair { public: [1u8; 32], secret: [2u8; 32] };
-        let kp2 = KeyPair { public: [3u8; 32], secret: [2u8; 32] };
+        let kp1 = KeyPair { public: test_bytes(1), secret: test_bytes(2) };
+        let kp2 = KeyPair { public: test_bytes(3), secret: test_bytes(2) };
         assert_ne!(kp1, kp2);
     }
 
     #[test]
     fn different_secret_not_equal() {
-        let kp1 = KeyPair { public: [1u8; 32], secret: [2u8; 32] };
-        let kp2 = KeyPair { public: [1u8; 32], secret: [4u8; 32] };
+        let kp1 = KeyPair { public: test_bytes(1), secret: test_bytes(2) };
+        let kp2 = KeyPair { public: test_bytes(1), secret: test_bytes(4) };
         assert_ne!(kp1, kp2);
     }
 
     #[test]
     fn secret_key_bytes_returns_actual_secret() {
-        let secret = [0xABu8; 32];
-        let kp = KeyPair { public: [0u8; 32], secret };
+        let secret = test_bytes(0xAB);
+        let kp = KeyPair { public: test_bytes(0), secret };
         assert_eq!(*kp.secret_key_bytes(), secret);
         // Verify NOT returning a zero array or any other fixed value
-        assert_ne!(*kp.secret_key_bytes(), [0u8; 32]);
+        assert_ne!(*kp.secret_key_bytes(), test_bytes(0));
     }
 }

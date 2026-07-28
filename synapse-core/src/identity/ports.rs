@@ -1,4 +1,4 @@
-use super::{Node, NodeId};
+use super::{ED25519_KEY_BYTES, Node, NodeId};
 use crate::shared::DomainError;
 
 /// Application port for cryptographic signing and verification.
@@ -15,7 +15,7 @@ pub trait KeySigner: Send + Sync {
     fn verify(&self, data: &[u8], signature: &[u8]) -> bool;
 
     /// Returns the raw 32-byte public key for this signer.
-    fn public_key_bytes(&self) -> [u8; 32];
+    fn public_key_bytes(&self) -> [u8; ED25519_KEY_BYTES];
 }
 
 /// Application port for persisting and retrieving node identities.

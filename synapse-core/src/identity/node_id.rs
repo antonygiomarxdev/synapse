@@ -1,4 +1,8 @@
+use crate::identity::ED25519_KEY_BYTES;
 use sha2::{Digest, Sha256};
+
+/// Length of a NodeId hex string (64 hex chars for 32 bytes).
+pub const NODE_ID_HEX_LEN: usize = 64;
 
 /// Unique identifier for a Synapse node — SHA256 of its Ed25519 public key.
 ///
@@ -6,17 +10,17 @@ use sha2::{Digest, Sha256};
 /// identifies a node in the Synapse swarm. It is derived from the node's
 /// public key and cannot be forged without the corresponding secret key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct NodeId(pub [u8; 32]);
+pub struct NodeId(pub [u8; ED25519_KEY_BYTES]);
 
 impl NodeId {
     /// Derives a `NodeId` from an Ed25519 public key.
     ///
     /// The derivation is `SHA256(public_key_bytes)` — a pure function
     /// with no side effects or I/O.
-    pub fn from_public_key(pk: &[u8; 32]) -> Self {
+    pub fn from_public_key(pk: &[u8; ED25519_KEY_BYTES]) -> Self {
         let mut hasher = Sha256::new();
         hasher.update(pk);
-        let hash: [u8; 32] = hasher.finalize().into();
+        let hash: [u8; ED25519_KEY_BYTES] = hasher.finalize().into();
         Self(hash)
     }
 
@@ -24,10 +28,10 @@ impl NodeId {
     ///
     /// Returns `None` if the string is not exactly 64 hex characters.
     pub fn from_hex(hex: &str) -> Option<Self> {
-        if hex.len() != 64 {
+        if hex.len() != NODE_ID_HEX_LEN {
             return None;
         }
-        let mut bytes = [0u8; 32];
+        let mut bytes = [0u8; ED25519_KEY_BYTES];
         for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
             if chunk.len() != 2 {
                 return None;
@@ -45,7 +49,7 @@ impl NodeId {
     }
 
     /// Returns the raw 32 bytes of this `NodeId`.
-    pub fn as_bytes(&self) -> &[u8; 32] {
+    pub fn as_bytes(&self) -> &[u8; ED25519_KEY_BYTES] {
         &self.0
     }
 }
@@ -67,12 +71,12 @@ impl std::fmt::Display for NodeId {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use crate::identity::test_bytes;
     // --- from_public_key tests (keep existing) ---
 
     #[test]
     fn node_id_is_deterministic() {
-        let pk: [u8; 32] = [1u8; 32];
+        let pk: [u8; ED25519_KEY_BYTES] = test_bytes(1);
         let id1 = NodeId::from_public_key(&pk);
         let id2 = NodeId::from_public_key(&pk);
         assert_eq!(id1, id2);
@@ -80,14 +84,14 @@ mod tests {
 
     #[test]
     fn different_keys_produce_different_ids() {
-        let pk1: [u8; 32] = [1u8; 32];
-        let pk2: [u8; 32] = [2u8; 32];
+        let pk1: [u8; ED25519_KEY_BYTES] = test_bytes(1);
+        let pk2: [u8; ED25519_KEY_BYTES] = [2u8; ED25519_KEY_BYTES];
         assert_ne!(NodeId::from_public_key(&pk1), NodeId::from_public_key(&pk2));
     }
 
     #[test]
     fn node_id_is_32_bytes() {
-        let pk: [u8; 32] = [0u8; 32];
+        let pk: [u8; ED25519_KEY_BYTES] = test_bytes(0);
         let id = NodeId::from_public_key(&pk);
         assert_eq!(id.0.len(), 32);
     }
@@ -96,7 +100,7 @@ mod tests {
 
     #[test]
     fn from_hex_roundtrip() {
-        let pk: [u8; 32] = [42u8; 32];
+        let pk: [u8; ED25519_KEY_BYTES] = test_bytes(42);
         let id = NodeId::from_public_key(&pk);
         let hex = id.to_hex();
         let parsed = NodeId::from_hex(&hex).unwrap();
@@ -105,7 +109,7 @@ mod tests {
 
     #[test]
     fn from_hex_valid_64_chars() {
-        let hex = "a".repeat(64);
+        let hex = "a".repeat(NODE_ID_HEX_LEN);
         let id = NodeId::from_hex(&hex);
         assert!(id.is_some());
     }
@@ -127,18 +131,18 @@ mod tests {
 
     #[test]
     fn from_hex_rejects_invalid_chars() {
-        assert!(NodeId::from_hex(&"g".repeat(64)).is_none());
-        assert!(NodeId::from_hex(&"Z".repeat(64)).is_none());
+        assert!(NodeId::from_hex(&"g".repeat(NODE_ID_HEX_LEN)).is_none());
+        assert!(NodeId::from_hex(&"Z".repeat(NODE_ID_HEX_LEN)).is_none());
     }
 
     // --- Display tests ---
 
     #[test]
     fn display_is_64_char_hex() {
-        let pk: [u8; 32] = [0u8; 32];
+        let pk: [u8; ED25519_KEY_BYTES] = test_bytes(0);
         let id = NodeId::from_public_key(&pk);
         let display = id.to_string();
-        assert_eq!(display.len(), 64);
+        assert_eq!(display.len(), NODE_ID_HEX_LEN);
         assert!(display.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
@@ -158,21 +162,21 @@ mod tests {
         // Hex "ff" decodes as (15 << 4) | 15 = 255 with OR.
         // If XOR were used instead: (15 << 4) ^ 15 = 240, which is wrong.
         let id = NodeId::from_hex("ff".repeat(32).as_str()).unwrap();
-        assert_eq!(id.0, [0xFFu8; 32]);
+        assert_eq!(id.0, test_bytes(0xFF));
     }
 
     // --- as_bytes tests ---
 
     #[test]
     fn as_bytes_returns_32_bytes() {
-        let pk: [u8; 32] = [7u8; 32];
+        let pk: [u8; ED25519_KEY_BYTES] = test_bytes(7);
         let id = NodeId::from_public_key(&pk);
         assert_eq!(id.as_bytes().len(), 32);
     }
 
     #[test]
     fn as_bytes_is_the_inner_array() {
-        let pk: [u8; 32] = [1u8; 32];
+        let pk: [u8; ED25519_KEY_BYTES] = test_bytes(1);
         let id = NodeId::from_public_key(&pk);
         assert_eq!(id.as_bytes(), &id.0);
     }

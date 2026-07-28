@@ -10,6 +10,18 @@ struct HealthResponse {
     swarm_nodes: usize,
 }
 
+/// Default bind address for the gateway HTTP server.
+pub const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8000";
+
+/// Binds to `addr` and starts the axum HTTP gateway.
+pub async fn serve(bind_addr: &str) {
+    let app = build_router();
+    let listener =
+        tokio::net::TcpListener::bind(bind_addr).await.expect("failed to bind TCP listener");
+    println!("Synapse Gateway listening on http://{bind_addr}");
+    axum::serve(listener, app).await.unwrap();
+}
+
 pub fn build_router() -> Router {
     Router::new()
         .route("/health", get(health))

@@ -1,3 +1,4 @@
+use crate::identity::ED25519_KEY_BYTES;
 use crate::identity::ports::KeySigner;
 use crate::shared::DomainError;
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
@@ -21,7 +22,10 @@ impl Ed25519Signer {
     /// is not a valid Ed25519 verifying key.
     /// In production, keys come from [`KeyPair::generate`] or are
     /// loaded from persistent storage.
-    pub fn new(public: &[u8; 32], secret: &[u8; 32]) -> Result<Self, DomainError> {
+    pub fn new(
+        public: &[u8; ED25519_KEY_BYTES],
+        secret: &[u8; ED25519_KEY_BYTES],
+    ) -> Result<Self, DomainError> {
         let signing_key = SigningKey::from_bytes(secret);
         let verifying_key = VerifyingKey::from_bytes(public)
             .map_err(|_| DomainError::SignatureVerificationFailed)?;
@@ -31,7 +35,7 @@ impl Ed25519Signer {
     /// Generates a fresh Ed25519 key pair using OS randomness.
     pub fn generate() -> Self {
         use rand::RngCore;
-        let mut secret = [0u8; 32];
+        let mut secret = [0u8; ED25519_KEY_BYTES];
         rand::thread_rng().fill_bytes(&mut secret);
         let signing_key = SigningKey::from_bytes(&secret);
         let verifying_key = signing_key.verifying_key();
@@ -39,7 +43,7 @@ impl Ed25519Signer {
     }
 
     /// Returns the raw 32-byte secret key material.
-    pub fn secret_key_bytes(&self) -> [u8; 32] {
+    pub fn secret_key_bytes(&self) -> [u8; ED25519_KEY_BYTES] {
         self.signing_key.to_bytes()
     }
 }
@@ -57,7 +61,7 @@ impl KeySigner for Ed25519Signer {
         self.verifying_key.verify(data, &sig).is_ok()
     }
 
-    fn public_key_bytes(&self) -> [u8; 32] {
+    fn public_key_bytes(&self) -> [u8; ED25519_KEY_BYTES] {
         self.verifying_key.to_bytes()
     }
 }
@@ -65,7 +69,6 @@ impl KeySigner for Ed25519Signer {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn generate_produces_valid_signer() {
         let signer = Ed25519Signer::generate();

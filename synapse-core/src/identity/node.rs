@@ -91,9 +91,9 @@ impl Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use crate::identity::test_bytes;
     fn test_keypair() -> KeyPair {
-        KeyPair { public: [1u8; 32], secret: [2u8; 32] }
+        KeyPair { public: test_bytes(1), secret: test_bytes(2) }
     }
 
     // --- register tests ---
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn derive_node_id_differs_for_different_keys() {
         let kp1 = test_keypair();
-        let kp2 = KeyPair { public: [3u8; 32], secret: [4u8; 32] };
+        let kp2 = KeyPair { public: test_bytes(3), secret: test_bytes(4) };
         assert_ne!(Node::derive_node_id(&kp1), Node::derive_node_id(&kp2));
     }
 
