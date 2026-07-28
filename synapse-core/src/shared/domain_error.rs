@@ -5,6 +5,10 @@ use thiserror::Error;
 /// Every domain operation that can fail returns a [`DomainError`].
 /// Infrastructure adapters translate these into their own error types.
 #[derive(Debug, Clone, PartialEq, Error)]
+// SAFETY: DomainError contains f64 only in InvalidTokenLogProb, and
+// Token::new() rejects non-finite values, so Eq is sound despite the
+// derived PartialEq on f64 (NaN comparisons can never occur).
+impl Eq for DomainError {}
 pub enum DomainError {
     #[error("invalid NodeId: {reason}")]
     InvalidNodeId { reason: String },
