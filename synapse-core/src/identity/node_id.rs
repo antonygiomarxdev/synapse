@@ -34,7 +34,7 @@ impl NodeId {
             }
             let high = hex_val(chunk[0])?;
             let low = hex_val(chunk[1])?;
-            bytes[i] = (high << 4) | low;
+            bytes[i] = (high << 4) + low;
         }
         Some(Self(bytes))
     }

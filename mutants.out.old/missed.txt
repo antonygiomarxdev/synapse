@@ -1,2 +1,0 @@
-synapse-core/src/main.rs:5:5: replace main with ()
-synapse-core/src/identity/node_id.rs:37:36: replace | with ^ in NodeId::from_hex
