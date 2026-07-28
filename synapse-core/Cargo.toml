@@ -35,9 +35,9 @@ chrono = "0.4"
 
 # Web3 — alloy replaces deprecated ethers-rs
 alloy = { version = "2", features = ["full"] }
-mutants = "0.0.4"
 
 [dev-dependencies]
+mutants = "0.0.4"
 proptest = "1"
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }

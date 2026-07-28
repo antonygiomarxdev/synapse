@@ -18,7 +18,7 @@ pub const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8000";
 /// This is a thin wrapper around [`serve_on`] that additionally binds
 /// the TCP listener. The binding and logging are I/O glue that cannot
 /// be tested without a real network interface.
-#[mutants::skip]
+#[cfg_attr(test, mutants::skip)]
 pub async fn serve(bind_addr: &str) {
     let listener =
         tokio::net::TcpListener::bind(bind_addr).await.expect("failed to bind TCP listener");

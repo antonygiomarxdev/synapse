@@ -1,4 +1,4 @@
-#[mutants::skip]
+#[cfg_attr(test, mutants::skip)]
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
