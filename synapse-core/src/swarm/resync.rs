@@ -13,7 +13,7 @@ pub struct ReSyncPolicy {
     chronic_flag_threshold: u32,
     chronic_window_hours: u32,
     per_request_divergences: HashMap<NodeId, u32>,
-    chronic_flags: HashMap<NodeId, u32>,
+    chronic_flags: HashMap<NodeId, Vec<i64>>,
 }
 
 impl Default for ReSyncPolicy {
@@ -57,15 +57,22 @@ impl ReSyncPolicy {
         self.per_request_divergences.get(node_id).copied().unwrap_or(0) >= self.expulsion_limit
     }
 
-    /// Records a chronic flag (one per request where the node was expelled
-    /// or audited as malicious).
-    pub fn record_chronic_flag(&mut self, node_id: NodeId) {
-        *self.chronic_flags.entry(node_id).or_insert(0) += 1;
+    /// Records a chronic flag with the current epoch timestamp.
+    /// One per request where the node was expelled or audited as malicious.
+    pub fn record_chronic_flag(&mut self, node_id: NodeId, now_epoch_secs: i64) {
+        self.chronic_flags.entry(node_id).or_default().push(now_epoch_secs);
     }
 
-    /// True if the node has crossed the chronic flag threshold.
-    pub fn is_chronic(&self, node_id: &NodeId) -> bool {
-        self.chronic_flags.get(node_id).copied().unwrap_or(0) >= self.chronic_flag_threshold
+    /// True if the node has crossed the chronic flag threshold
+    /// within the `chronic_window_hours` window.
+    pub fn is_chronic(&self, node_id: &NodeId, now_epoch_secs: i64) -> bool {
+        let cutoff = now_epoch_secs - (self.chronic_window_hours as i64) * 3600;
+        let count = self
+            .chronic_flags
+            .get(node_id)
+            .map(|timestamps| timestamps.iter().filter(|&&ts| ts > cutoff).count() as u32)
+            .unwrap_or(0);
+        count >= self.chronic_flag_threshold
     }
 
     /// Resets per-request counters at the end of a request.
@@ -130,12 +137,34 @@ mod tests {
     fn chronic_flag_after_ten_flags() {
         let mut policy = ReSyncPolicy::default();
         let n = node(1);
+        let now = 1_000_000_000i64;
         for i in 0..9 {
-            policy.record_chronic_flag(n);
-            assert!(!policy.is_chronic(&n), "flag {} should not be chronic", i + 1);
+            policy.record_chronic_flag(n, now);
+            assert!(!policy.is_chronic(&n, now), "flag {} should not be chronic", i + 1);
         }
-        policy.record_chronic_flag(n);
-        assert!(policy.is_chronic(&n));
+        policy.record_chronic_flag(n, now);
+        assert!(policy.is_chronic(&n, now));
+    }
+
+    #[test]
+    fn chronic_window_filters_old_flags() {
+        let mut policy = ReSyncPolicy::new(3, 3, 5, 24);
+        let n = node(1);
+        let now = 1_000_000_000i64;
+        // 5 flags within window (recent)
+        for _ in 0..5 {
+            policy.record_chronic_flag(n, now);
+        }
+        // 5 flags outside window (2 days ago)
+        let old = now - 48 * 3600;
+        for _ in 0..5 {
+            policy.record_chronic_flag(n, old);
+        }
+        // Only the 5 recent flags count, which is >= threshold of 5
+        assert!(policy.is_chronic(&n, now));
+        // But if we look from a later time, the recent ones become old too
+        let later = now + 48 * 3600;
+        assert!(!policy.is_chronic(&n, later));
     }
 
     #[test]
