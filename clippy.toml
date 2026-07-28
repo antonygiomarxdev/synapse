@@ -1,0 +1,5 @@
+# Clippy lint configuration
+# https://rust-lang.github.io/rust-clippy/
+
+allow-unwrap-in-tests = true
+allow-dbg-in-tests = true

@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # ─── Rust ────────────────────────────────────────────────
+
+  rust-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+      - run: cargo clippy -- -D warnings
+
+  rust-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test
+
+  rust-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-deny
+      - run: cargo deny check
+      - uses: taiki-e/install-action@cargo-audit
+      - run: cargo audit
+
+  # ─── Python ──────────────────────────────────────────────
+
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install ruff
+      - run: cd synapse-runtime && ruff check . && ruff format --check .
+
+  python-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pip-audit
+      - run: cd synapse-runtime && pip-audit
+
+  # ─── Solidity ────────────────────────────────────────────
+
+  solidity:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts/stake
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci
+      - run: npx hardhat compile
+      - run: npx hardhat test
+      - run: npx solhint 'src/**/*.sol'

@@ -2,22 +2,25 @@
 #
 # Models are manually verified before listing.
 # Community proposals via GitHub PR welcome.
-#
-# Each model entry requires:
-#   id          — unique model identifier (kebab-case)
-#   hf_repo     — HuggingFace repository
-#   sha256      — verified SHA256 of the full model checkpoint
-#   experts     — total experts in the MoE architecture
-#   active_per_token — how many experts activate per forward pass
-#   expert_size_gb — per-expert VRAM in 4-bit quantization
-#   shared_params_gb — shared parameters (embeddings, attention, gate)
-#   context     — maximum context window in tokens
+
+[[models]]
+id = "kimi-k27-code"
+name = "Kimi K2.7 Code"
+hf_repo = "moonshotai/Kimi-K2.7-Code"
+sha256 = ""
+experts = 384
+active_per_token = 32
+expert_size_gb = 1.5
+shared_params_gb = 8.0
+context = 131072
+license = "MIT"
+description = "Moonshot AI's code-optimized MoE. ~1T total params, ~30B active. Specialized for software development tasks."
 
 [[models]]
 id = "mixtral-8x7b"
 name = "Mixtral 8x7B v0.1"
 hf_repo = "mistralai/Mixtral-8x7B-v0.1"
-sha256 = ""  # TBD: compute from checkpoint
+sha256 = ""
 experts = 8
 active_per_token = 2
 expert_size_gb = 3.0
@@ -29,7 +32,7 @@ license = "Apache-2.0"
 id = "deepseek-v2-lite"
 name = "DeepSeek-V2 Lite"
 hf_repo = "deepseek-ai/DeepSeek-V2-Lite"
-sha256 = ""  # TBD
+sha256 = ""
 experts = 64
 active_per_token = 6
 expert_size_gb = 0.15
@@ -41,7 +44,7 @@ license = "MIT"
 id = "qwen2.5-moe"
 name = "Qwen2.5-MoE"
 hf_repo = "Qwen/Qwen2.5-57B-A14B"
-sha256 = ""  # TBD
+sha256 = ""
 experts = 64
 active_per_token = 8
 expert_size_gb = 0.5

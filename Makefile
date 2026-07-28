@@ -1,8 +1,10 @@
-.PHONY: all build test lint clean
+.PHONY: all build test lint lint-fix audit clean dev
 
 all: build
 
-# ─── Rust Core ───────────────────────────────────────────────
+# ─── Rust ───────────────────────────────────────────────────
+
+SRC = synapse-core
 
 build:
 	cargo build --release
@@ -10,39 +12,62 @@ build:
 test:
 	cargo test
 
+test-gateway:
+	cargo test --test '*' gateway::
+
 lint:
-	cargo clippy -- -D warnings
 	cargo fmt --check
+	cargo clippy -- -D warnings
 
-bench:
-	cargo bench
+lint-fix:
+	cargo fmt
+	cargo clippy --fix --allow-dirty --allow-staged
 
-# ─── Python Runtime ──────────────────────────────────────────
+audit:
+	cargo deny check
+	cargo audit
+
+# ─── Python (vLLM Runtime) ─────────────────────────────────
 
 runtime-dev:
 	cd synapse-runtime && pip install -e ".[dev]"
 
-test-runtime:
+runtime-lint:
+	cd synapse-runtime && ruff check .
+	cd synapse-runtime && ruff format --check .
+
+runtime-lint-fix:
+	cd synapse-runtime && ruff check --fix .
+	cd synapse-runtime && ruff format .
+
+runtime-test:
 	cd synapse-runtime && python -m pytest tests/ -v
 
-# ─── Python Gateway ──────────────────────────────────────────
+runtime-audit:
+	cd synapse-runtime && pip-audit
 
-gateway-dev:
-	cd synapse-gateway && pip install -e ".[dev]"
-
-test-gateway:
-	cd synapse-gateway && python -m pytest tests/ -v
-
-# ─── Contracts ───────────────────────────────────────────────
+# ─── Solidity ───────────────────────────────────────────────
 
 contracts-test:
 	cd contracts/stake && npx hardhat test
 
-# ─── Full Suite ──────────────────────────────────────────────
+contracts-lint:
+	cd contracts/stake && npx solhint 'src/**/*.sol'
 
-test-all: test test-runtime test-gateway contracts-test
+# ─── Full Suite ─────────────────────────────────────────────
 
-# ─── Clean ───────────────────────────────────────────────────
+test-all: test runtime-test contracts-test
+
+lint-all: lint runtime-lint contracts-lint
+
+audit-all: audit runtime-audit
+
+# ─── Dev Server ─────────────────────────────────────────────
+
+dev:
+	cargo run --release
+
+# ─── Clean ──────────────────────────────────────────────────
 
 clean:
 	cargo clean

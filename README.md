@@ -17,19 +17,29 @@ Synapse turns thousands of consumer GPUs into a single distributed inference swa
 
 ## Why Synapse?
 
-MoE (Mixture-of-Experts) models like Mixtral, DeepSeek-V2, and Kimi K2 are the future of LLM architecture. They work by activating only a small fraction of their total parameters per token — typically 1-2%. This means 98% of the model sits idle at any moment.
+MoE (Mixture-of-Experts) models like **Kimi K2.7 Code**, DeepSeek-V2, and Mixtral are the future of LLM architecture. They work by activating only a small fraction of their total parameters per token — typically 1-2%. This means 98% of the model sits idle at any moment.
 
 **Synapse exploits this property.** Instead of cramming the entire model into one datacenter GPU, the swarm distributes experts across hundreds of consumer GPUs. Each node holds just a handful of experts. Requests flow through the swarm, activating only the experts they need.
 
+### Example: Kimi K2.7 Code on Synapse
+
+Kimi K2.7 Code is a ~1 trillion parameter MoE model from Moonshot AI, optimized for coding. It has 384 experts, with 32 active per token. Running the full model requires datacenter hardware.
+
+With Synapse:
+- 192 consumer GPUs each hold 2 experts (~11GB VRAM in 4-bit)
+- Each token activates only 32 experts across ~16 nodes
+- The swarm self-organizes: hot experts auto-replicate, cold experts stay dormant
+- A developer in any country can use Kimi K2.7 Code without an API key, rate limit, or regional restriction
+
 ### The Pitch
 
-| | Centralized Providers (OpenAI, Anthropic, Groq) | Synapse |
+| | Centralized Providers | Synapse |
 |---|---|---|
 | **Availability** | Rate limits, downtime, regional blocks | Always on while nodes exist |
 | **Model selection** | Only what they choose to serve | Any open-weight MoE model |
 | **Access control** | API keys, waitlists, KYC | Open protocol, no permission needed |
 | **Hardware** | Datacenter H100s ($30K each) | Consumer GPUs (your gaming PC) |
-| **Censorship resistance** | Can be shut down, blocked, restricted | P2P mesh, no central authority |
+| **Censorship resistance** | Can be shut down, blocked | P2P mesh, no central authority |
 
 Synapse doesn't compete on speed. It competes on **absence of gatekeepers.**
 
@@ -41,152 +51,143 @@ Synapse doesn't compete on speed. It competes on **absence of gatekeepers.**
 
 | Mode | How | Latency | Use Case |
 |---|---|---|---|
-| **Speculative Swarm** | N nodes run the full model in parallel. Results merged by majority vote. | ~1 node latency | Chat, IDEs, CLI agents |
-| **Swarm DAG** | True expert distribution. Requests flow through expert nodes. | Not latency-sensitive | CI/CD, codebase analysis, batch evaluation |
+| **Speculative Swarm** | N nodes run the full model in parallel. Majority vote on each token. | ~1 node latency | Chat, IDEs, CLI agents |
+| **Swarm DAG** | True expert distribution. Requests flow through expert nodes. | Not latency-sensitive | CI/CD, codebase analysis, batch eval |
 
 ### Speculative Swarm (Realtime)
 
 ```
-Client: "Write a Python function..."
+Client: "Write a Rust function..."
 
      ┌─────────────────────┐
-     │    Gateway           │
-     │  (Coordinator)       │
+     │    Gateway (Rust)   │
+     │    axum + tokio     │
      └──┬───┬───┬───┬───┬──┘
         │   │   │   │   │
    ┌────▼┐ ┌▼────┐ ┌▼────┐ ┌▼────┐ ┌▼────┐
    │Node1│ │Node2│ │Node3│ │Node4│ │Node5│
+   │K2.7 │ │K2.7 │ │K2.7 │ │K2.7 │ │K2.7 │
    └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘
       │       │       │       │       │
-   "def"   "def"   "def"   "fun"   "def"
+   "fn "   "fn "   "fn "   "pub"   "fn "
       │       │       │       │       │
       └───────┴───┬───┴───────┴───────┘
                   │
-            CONSENSUS: "def" (4/5)
+            CONSENSUS: "fn " (4/5)
 ```
 
-- 5 nodes generate independently
-- Majority token wins
-- Divergent nodes are re-synced or flagged
-- **Latency = single-node latency** (no cross-node communication overhead)
+- 5 nodes generate independently with different seeds
+- Majority token wins; minority nodes re-sync
+- **Latency = single-node latency** — no cross-node communication overhead
 
 ### Swarm DAG (Batch)
 
 ```
-Model: Mixtral 8x7B (8 experts, 2 active per token)
+Kimi K2.7 Code: 384 experts, 32 active per token
 
-  Expert #3 held by: Node A ($0.08/1M tokens), Node B ($0.11)
-  Expert #7 held by: Node C ($0.09), Node D ($0.14)
+  Expert #12 held by: Node A ($0.08/1M tokens), Node B ($0.11)
+  Expert #47 held by: Node C ($0.09), Node D ($0.14)
 
-  Gateway assembles: A (#3) + C (#7) = $0.17
-  Client pays: $0.25 (gateway fee included)
+  Gateway assembles: A (#12) + C (#47) + ... = cheapest route
+  Client pays catalog price (gateway fee included)
 
-  Request 1 → activates experts [3, 7] → routed through A + C
-  Request 2 → activates experts [1, 5] → routed through different nodes
+  Batch of 100 requests flows through expert DAG simultaneously
 ```
 
-- True expert distribution across the swarm
-- Gateway assembles the cheapest valid route
-- Miners compete on price — expensive nodes get no work
+- True expert distribution — each node only loads 2-5 experts
+- Gateway is the market maker: miners compete on price
+- Zero barrier to entry: any GPU can mine
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────┐
-│              B2B API Gateway (FastAPI)               │
-│     OpenAI-compatible  ·  Catalog  ·  Pricing        │
-└─────────────────────┬────────────────────────────────┘
-                      │
-            Encrypted (WebRTC / Noise)
-                      │
-                      ▼
-┌──────────────────────────────────────────────────────┐
-│              Swarm Orchestration (Rust)              │
-│     Kademlia DHT  ·  Consensus  ·  Routing           │
-│     Speculative Engine  ·  DAG Engine                │
-└─────────────────────┬────────────────────────────────┘
-                      │
-              Hidden states / tensors
-                      │
-                      ▼
-┌──────────────────────────────────────────────────────┐
-│              Compute Node (Python + vLLM)            │
-│     Weight Loader  ·  Expert Management  ·  Runtime  │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│              SYNAPSE NODE (single Rust binary)           │
+│                                                          │
+│  ┌──────────────────────┐  ┌──────────────────────────┐ │
+│  │  Gateway (axum)      │  │  Swarm Core              │ │
+│  │  /v1/models          │  │  Consensus · DAG · KAD   │ │
+│  │  /v1/chat/completions│  │  DHT · Pricing · Stake   │ │
+│  └──────────┬───────────┘  └──────────┬───────────────┘ │
+│             │                         │                  │
+│             └─────────┬───────────────┘                  │
+│                       │                                  │
+│              Unix Socket + protobuf                      │
+│                       │                                  │
+│  ┌────────────────────▼──────────────────────────────┐  │
+│  │  Python Runtime (vLLM)                             │  │
+│  │  Weight Loader · Expert Management · Determinism   │  │
+│  └───────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────┘
 ```
+
+**Single binary.** Gateway + P2P core in Rust (axum + libp2p). Python only for vLLM inference runtime — communicates via Unix socket.
 
 ### Tech Stack
 
-- **Core (P2P, DHT, consensus):** Rust + libp2p + protobuf
-- **Inference runtime:** Python + vLLM (communicates with core via Unix socket)
-- **Gateway:** Python + FastAPI (OpenAI-compatible endpoints)
-- **Payments:** USDC on L2 (Solana/Base) via Solidity smart contracts
+| Layer | Language | Why |
+|---|---|---|
+| **Gateway + P2P Core** | Rust | Zero-cost abstractions, tokio async, <2ms p99, single binary |
+| **Inference Runtime** | Python | vLLM is Python-only. Isolated subprocess. |
+| **Smart Contracts** | Solidity | L2 standard (Solana programs also planned) |
 
 ---
 
 ## Quick Start
 
 ### Prerequisites
-
 - Rust 1.97+
-- Python 3.12+
-- CUDA-capable GPU (for inference; DHT-only nodes can run CPU)
+- Python 3.12+ (for vLLM runtime)
+- CUDA-capable GPU (for inference; DHT relay nodes can run CPU-only)
 
-### Build
+### Build & Run
 
 ```bash
 git clone https://github.com/antonygiomarxdev/synapse.git
 cd synapse
 
-# Rust core
+# Build (single binary: gateway + swarm core)
 cargo build --release
+
+# Run tests
 cargo test
 
-# Python runtime
-cd synapse-runtime && pip install -e ".[dev]"
-
-# Gateway
-cd ../synapse-gateway && pip install -e ".[dev]"
-
-# Smart contracts
-cd ../contracts/stake && npm install && npx hardhat compile
-```
-
-### Run a Miner Node
-
-```bash
-# 1. Install Synapse
-cargo build --release
-
-# 2. Stake USDC (required for eligibility)
-#    Send ≥100 USDC to the StakeManager contract on L2
-
-# 3. Start mining (auto-assigns experts based on your VRAM)
+# Start node (gateway + DHT + miner in one process)
 ./target/release/synapse-node
-# Output: "Serving Mixtral 8x7B — Experts #3, #7 — Earning ~$0.12/hr"
+# → Gateway on http://0.0.0.0:8000
+# → DHT peer active
+# → GPU detected, experts auto-assigned
 ```
 
-### Run the Gateway
-
-```bash
-cd synapse-gateway
-uvicorn synapse_gateway.api:app --reload
-# Gateway available at http://localhost:8000
-```
-
-### Make an Inference Request
+### Inference Request
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "mixtral-8x7b",
+    "model": "kimi-k27-code",
     "priority": "realtime",
     "swarm_size": 5,
-    "messages": [{"role": "user", "content": "Write a Python function to sort a list"}]
+    "messages": [{"role": "user", "content": "Write a Rust function to merge two sorted arrays"}]
   }'
+```
+
+Response:
+```json
+{
+  "id": "chatcmpl-0001",
+  "model": "kimi-k27-code",
+  "choices": [{
+    "index": 0,
+    "message": {
+      "role": "assistant",
+      "content": "fn merge_sorted<T: Ord>(a: &[T], b: &[T]) -> Vec<T> { ..."
+    },
+    "finish_reason": "stop"
+  }]
+}
 ```
 
 ---
@@ -195,57 +196,52 @@ curl http://localhost:8000/v1/chat/completions \
 
 ```
 synapse/
-├── synapse-core/            # Rust — P2P core, DHT, domain logic
+├── synapse-core/            # Rust — everything in one crate
 │   ├── src/
-│   │   ├── identity/        #   NodeId, KeyPair, Node aggregate
+│   │   ├── main.rs          #   Binary entrypoint
+│   │   ├── gateway/         #   axum HTTP server, catalog, routing
+│   │   ├── identity/        #   NodeId, KeyPair, Node
 │   │   ├── model/           #   ModelId, ExpertId, Catalog
-│   │   ├── swarm/           #   Consensus, Speculative engine, DAG engine
-│   │   ├── economic/        #   Reputation, Pricing, Stake management
+│   │   ├── swarm/           #   Consensus, Speculative, DAG engines
+│   │   ├── economic/        #   Reputation, Pricing, Stake
 │   │   ├── transport/       #   WebRTC, Signalling
-│   │   └── dht/             #   Kademlia, Expert registry, Bootstrap
+│   │   └── dht/             #   Kademlia, Expert registry
 │   └── proto/               #   Protobuf schemas
-├── synapse-runtime/         # Python — vLLM adapter, weight loader
-├── synapse-gateway/         # Python — FastAPI, B2B API, catalog
-├── contracts/stake/         # Solidity — StakeManager + graduated slashing
+├── synapse-runtime/         # Python — vLLM adapter (subprocess)
+├── contracts/stake/         # Solidity — StakeManager
 ├── config/
 │   ├── models.toml          #   Curated model catalog
 │   └── default.toml         #   Node defaults
-├── docs/superpowers/        #   Design spec + implementation plan
-└── scripts/                 #   Dev tooling
+└── docs/                    #   Spec + implementation plan
 ```
 
 ---
 
 ## Model Catalog
 
-Synapse uses a curated catalog. Models are manually verified (SHA256 hash, architecture, license) before listing. Community proposals welcome via GitHub PR.
+Curated and verified. Community proposals via PR.
 
-| Model | Params | Experts | Active/Token | VRAM/node (2 experts) | License |
+| Model | Params | Experts | Active | 🔥 For | License |
 |---|---|---|---|---|---|
-| Mixtral 8x7B | 46.7B | 8 | 2 | ~9GB | Apache 2.0 |
-| Mixtral 8x22B | 141B | 8 | 2 | ~24GB | Apache 2.0 |
-| DeepSeek-V2 Lite | 16B | 64 | 6 | ~1.3GB | MIT |
-| Qwen2.5-MoE | 57B | 64 | 8 | ~3GB | Apache 2.0 |
-| Kimi K2.7 Code | ~1T | ~384 | ~32 | ~11GB | MIT (modified) |
-
-*VRAM includes shared parameters (embeddings, attention, gate). 4-bit quantization assumed.*
+| **Kimi K2.7 Code** | ~1T | 384 | 32 | Software dev | MIT |
+| Mixtral 8x7B | 46.7B | 8 | 2 | General purpose | Apache 2.0 |
+| Mixtral 8x22B | 141B | 8 | 2 | Complex reasoning | Apache 2.0 |
+| DeepSeek-V2 Lite | 16B | 64 | 6 | Lightweight edge | MIT |
+| Qwen2.5-MoE | 57B | 64 | 8 | Multilingual | Apache 2.0 |
 
 ---
 
 ## How Miners Earn
 
 ```
-Client pays $0.25/1M tokens → Gateway keeps 15-20% → Miner receives remainder
+Client pays $0.40/1M tokens → Gateway keeps 15-20% → Miner receives remainder
 
-Example (Mixtral 8x7B, expert #3):
-  You serve Expert #3 at $0.08/1M tokens
-  1000 requests, 1000 tokens each = 1M tokens
-  You earn $0.08 for that batch
+Example (Kimi K2.7 Code, expert #12):
+  $0.08/1M tokens × 1000 requests × 1000 tokens = $0.08/batch
+  Average: $2-12/day depending on GPU, demand, and uptime
 
-  Average earnings: $2-10/day depending on GPU tier, demand, and uptime.
-
-Key principle: you earn for verified work only.
-If you produce garbage → no payment + reputation flag → slashing.
+You earn for verified work only.
+Garbage output → no payment + reputation flag → slashing.
 ```
 
 ---
@@ -253,85 +249,52 @@ If you produce garbage → no payment + reputation flag → slashing.
 ## Security
 
 ### Consensus
+- **Realtime:** Ensemble voting. N nodes. Majority wins. Divergent → re-sync.
+- **Batch:** Statistical audit. ~5% verified by second expert set.
 
-- **Realtime:** Ensemble voting. N nodes generate independently. Majority wins.
-- **Batch:** Statistical audit. ~5% of requests verified by second expert set.
-
-### Slashing
-
-Fully automatic. Graduated penalties:
-1. Single divergence → no payment for that token (re-sync)
-2. 3+ divergences per request → expelled + flag
-3. 10+ flags in 24h → stake frozen 48h
-4. 50+ flags in 7 days → 20% stake slashed + score reset
-5. Fraud pattern → full slashing + permanent ban
-
-### Attack Resistance
-
-| Attack | Defense |
-|---|---|
-| Garbage output | Ensemble voting rejects. Audit detects. |
-| Sybil (fake nodes) | Stake required. New nodes have low priority. |
-| Free-riding (charge without work) | No valid response → no payment. |
-| Prompt theft | WebRTC DTLS encryption + economic slashing. |
-| Price cartel | Zero barrier to entry. New miners undercut. |
+### Slashing (fully automatic)
+1. Single divergence → no payment (re-sync)
+2. 3+ per request → expelled + flag
+3. 10+ flags/24h → stake frozen 48h
+4. 50+ flags/7d → 20% slashed
+5. Fraud → full slashing + ban
 
 ---
 
 ## Roadmap
 
-**V1 (2026 Q3-Q4) — Swarm MVP**
-- [x] Protocol design & spec
-- [x] Repository scaffold
+**V1 — Swarm MVP (Q3-Q4 2026)**
+- [x] Spec + architecture design
+- [x] Repository scaffold (Rust + Python + Solidity)
 - [ ] Kademlia DHT + expert registry
-- [ ] Speculative Swarm (realtime)
-- [ ] Swarm DAG (batch)
+- [ ] Speculative Swarm (realtime consensus)
+- [ ] Swarm DAG (batch expert distribution)
 - [ ] vLLM runtime adapter
-- [ ] FastAPI gateway (OpenAI-compatible)
+- [ ] axum gateway (OpenAI-compatible)
 - [ ] USDC payments on L2
 
-**V2 (2027) — Scale & Privacy**
+**V2 — Scale & Privacy (2027)**
 - [ ] Kimi K2.7 Code (~192 node swarm)
-- [ ] Split Inference privacy mode
-- [ ] Full reputation system (Platinum tiers)
+- [ ] Split Inference privacy
 - [ ] Client SDKs (Python, TypeScript, Rust)
 
-**V3 (2028+) — Kimi K3 Era**
+**V3 — Kimi K3 Era (2028+)**
+- [ ] 3T+ class models
 - [ ] KDA-aware DAG parallelism
-- [ ] Speculative expert prediction
-- [ ] 3T+ class model support
-- [ ] Governance token / DAO
+- [ ] Governance DAO
 
 ---
 
 ## Contributing
 
-Synapse is open source (Apache 2.0). The protocol, node software, and launcher are free to use, modify, and redistribute. The reference gateway is source-available (BSL).
+Open source (Apache 2.0). Protocol, node software, and launcher are free.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines (coming soon).
-
-### Ways to Contribute
-
-- **Code:** Check the [open issues](https://github.com/antonygiomarxdev/synapse/issues)
-- **Models:** Propose new models for the catalog via PR to `config/models.toml`
-- **Run a node:** Help grow the swarm
-- **Research:** The [design spec](docs/superpowers/specs/2026-07-27-synapse-design.md) has open questions for V2+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## License
 
-- Protocol specification: [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)
-- Core, node software, launcher: [Apache 2.0](LICENSE)
-- Reference gateway: Business Source License (BSL)
-
----
-
-## Acknowledgments
-
-Synapse draws inspiration from:
-- **Bitcoin** — bootstrap and self-sustaining P2P network model
-- **Helium / Filecoin / Render** — open protocol with reference commercial implementation
-- **Moonshot AI** — Kimi K2/K3 architecture proves MoE is the future
-- **Predictive coding (neuroscience)** — speculative expert activation
-- **Immune system** — hot/cold expert replication
+- Protocol: [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- Core, node, launcher: [Apache 2.0](LICENSE)
+- Reference gateway: BSL

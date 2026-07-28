@@ -1,4 +1,4 @@
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 /// Unique identifier for a Synapse node — SHA256 of its public key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -30,10 +30,7 @@ mod tests {
     fn different_keys_produce_different_ids() {
         let pk1: [u8; 32] = [1u8; 32];
         let pk2: [u8; 32] = [2u8; 32];
-        assert_ne!(
-            NodeId::from_public_key(&pk1),
-            NodeId::from_public_key(&pk2)
-        );
+        assert_ne!(NodeId::from_public_key(&pk1), NodeId::from_public_key(&pk2));
     }
 
     #[test]

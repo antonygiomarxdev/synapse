@@ -1,0 +1,28 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+
+  - repo: local
+    hooks:
+      - id: rustfmt
+        name: rustfmt
+        entry: cargo fmt --check
+        language: system
+        pass_filenames: false
+
+      - id: clippy
+        name: clippy
+        entry: cargo clippy -- -D warnings
+        language: system
+        pass_filenames: false
+
+      - id: ruff
+        name: ruff
+        entry: bash -c 'cd synapse-runtime && ruff check .'
+        language: system
+        pass_filenames: false

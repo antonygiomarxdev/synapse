@@ -1,0 +1,24 @@
+# Ruff configuration — Python linter + formatter
+# https://docs.astral.sh/ruff/
+
+target-version = "py312"
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "C4",  # flake8-comprehensions
+    "RUF", # ruff-specific
+]
+ignore = []
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
