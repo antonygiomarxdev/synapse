@@ -8,6 +8,8 @@ license.workspace = true
 [dependencies]
 # Identity
 ed25519-dalek = "3.0"
+# Domain randomness (no crypto — just entropy for key generation)
+rand = "0.8"
 sha2 = "0.10"
 
 # DHT
