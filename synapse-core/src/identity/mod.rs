@@ -1,4 +1,6 @@
+pub mod infrastructure;
 pub mod key_pair;
+
 pub mod node;
 pub mod node_id;
 pub mod ports;
