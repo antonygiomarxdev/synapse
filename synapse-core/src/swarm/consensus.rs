@@ -58,7 +58,10 @@ pub fn vote(
         for (text, nodes) in counts {
             if nodes.len() >= quorum {
                 match &best {
-                    Some((_, best_nodes)) if nodes.len() > best_nodes.len() => {
+                    Some((best_text, best_nodes))
+                        if nodes.len() > best_nodes.len()
+                            || (nodes.len() == best_nodes.len() && text < *best_text) =>
+                    {
                         best = Some((text, nodes));
                     }
                     None => best = Some((text, nodes)),
