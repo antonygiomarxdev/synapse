@@ -106,30 +106,35 @@ The protocol is identical. Only the swarm size changes.
 │                                                              │
 │  ┌─────────────────────┐  ┌──────────────────────────────┐  │
 │  │  Kademlia DHT       │  │  Execution Engines           │  │
-│  │  Expert → [NodeIDs] │  │                              │  │
+│  │  Expert -> [NodeIDs]│  │                              │  │
 │  │  Co-activation map  │  │  Swarm DAG (batch mode)      │  │
 │  │  Reputation scores  │  │  Speculative Swarm (realtime)│  │
 │  │  Node pricing data  │  │                              │  │
 │  └─────────────────────┘  └──────────────────────────────┘  │
 │                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  Consensus: ensemble voting (realtime)               │   │
-│  │          + statistical audit (batch)                 │   │
-│  │  Resilience: partition tolerance, re-sync,           │   │
-│  │              mid-request failure recovery            │   │
-│  └──────────────────────────────────────────────────────┘   │
+│  Consensus: ensemble voting (realtime)                       │
+│           + statistical audit (batch)                        │
+│  Resilience: partition tolerance, re-sync, failure recovery  │
 └──────────────────────────┬───────────────────────────────────┘
                            │
-           Hidden states / tensor sub-blocks
+       ┌───────────────────┤
+       │  InferencePort    │  Rust trait (runtime-agnostic)
+       │  load / generate  │  protobuf over Unix socket
+       │  verify / detect  │
+       └───────────────────┤
                            │
                            ▼
 ┌──────────────────────────────────────────────────────────────┐
 │                COMPUTE NODE LAYER                            │
-│  - Inference runtime (vLLM, llama.cpp)                       │
+│  ┌───────────┐  ┌───────────┐  ┌───────────┐               │
+│  │  vLLM     │  │ llama.cpp │  │  SGLang   │  ...more      │
+│  │  Adapter  │  │  Adapter  │  │  Adapter  │               │
+│  │  (V1)     │  │  (V2+)    │  │  (V2+)    │               │
+│  └───────────┘  └───────────┘  └───────────┘               │
 │  - Experts + shared params loaded in VRAM (4-bit)            │
 │  - Weights identified by SHA256 hash                         │
-│  - Auto-assignment: system chooses experts, miner just runs  │
-│  - Launcher: install → connect GPU → click Start → earn      │
+│  - Auto-assignment: system chooses experts + runtime         │
+│  - Launcher: install -> connect GPU -> click Start -> earn   │
 └──────────────────────────────────────────────────────────────┘
 ```
 
