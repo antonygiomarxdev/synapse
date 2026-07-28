@@ -11,13 +11,13 @@ pub struct ChatRequest {
     pub swarm_size: u32,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct Message {
     pub role: String,
     pub content: String,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct ChatResponse {
     pub id: String,
     pub object: String,
@@ -26,7 +26,7 @@ pub struct ChatResponse {
     pub choices: Vec<Choice>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Choice {
     pub index: u32,
     pub message: Message,
@@ -57,4 +57,81 @@ pub async fn chat_completions(
             finish_reason: "stop".into(),
         }],
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    async fn test_app() -> axum::Router {
+        axum::Router::new().route("/v1/chat/completions", axum::routing::post(chat_completions))
+    }
+
+    #[tokio::test]
+    async fn chat_completions_returns_200() {
+        let app = test_app().await;
+        let body = serde_json::json!({
+            "model": "kimi-k3",
+            "messages": [{"role": "user", "content": "hello"}]
+        });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/chat/completions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn chat_completions_echos_model() {
+        let app = test_app().await;
+        let body = serde_json::json!({
+            "model": "kimi-k3",
+            "messages": [{"role": "user", "content": "hello"}]
+        });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/chat/completions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let resp_body = axum::body::to_bytes(response.into_body(), 1024).await.unwrap();
+        let chat: ChatResponse = serde_json::from_slice(&resp_body).unwrap();
+        assert_eq!(chat.model, "kimi-k3");
+    }
+
+    #[tokio::test]
+    async fn defaults_applied_without_explicit_fields() {
+        let app = test_app().await;
+        let body = serde_json::json!({
+            "model": "kimi-k3",
+            "messages": [{"role": "user", "content": "hello"}]
+        });
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/chat/completions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
 }

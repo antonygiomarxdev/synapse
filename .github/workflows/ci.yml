@@ -34,9 +34,17 @@ jobs:
           components: llvm-tools
       - uses: taiki-e/install-action@cargo-llvm-cov
       - run: cargo test
-      - run: cargo llvm-cov
-        # Threshold (80%) enforced locally via make gauntlet.
-        # CI runs coverage info-only until stubs are replaced with real code.
+      - run: cargo llvm-cov --fail-under-lines 80 --fail-under-functions 80
+
+  # ─── Rust: Mutation Testing ─────────────────────────────
+
+  rust-mutants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-mutants
+      - run: cargo mutants -- --workspace
 
   # ─── Rust: Security Audit ────────────────────────────────
 
