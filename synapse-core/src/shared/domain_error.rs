@@ -4,7 +4,7 @@ use thiserror::Error;
 ///
 /// Every domain operation that can fail returns a [`DomainError`].
 /// Infrastructure adapters translate these into their own error types.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum DomainError {
     #[error("invalid NodeId: {reason}")]
     InvalidNodeId { reason: String },
@@ -41,7 +41,11 @@ pub enum DomainError {
 
     #[error("invalid price: {reason}")]
     InvalidPrice { reason: String },
+    #[error("invalid token log_prob: {value} (must be finite)")]
+    InvalidTokenLogProb { value: f64 },
 
+    #[error("invalid token text: {reason}")]
+    InvalidTokenText { reason: String },
     #[error("invalid token: {reason}")]
     InvalidToken { reason: String },
 
@@ -113,5 +117,17 @@ mod tests {
         let a = DomainError::InvalidNodeId { reason: "bad".into() };
         let b = DomainError::ModelNotFound { model_id: "x".into() };
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn invalid_token_log_prob_display() {
+        let err = DomainError::InvalidTokenLogProb { value: f64::NAN };
+        assert_eq!(err.to_string(), "invalid token log_prob: NaN (must be finite)");
+    }
+
+    #[test]
+    fn invalid_token_text_display() {
+        let err = DomainError::InvalidTokenText { reason: "too long".into() };
+        assert_eq!(err.to_string(), "invalid token text: too long");
     }
 }
