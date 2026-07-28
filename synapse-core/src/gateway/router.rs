@@ -135,3 +135,28 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
     }
 }
+
+#[cfg(test)]
+mod default_tests {
+    use super::*;
+
+    #[test]
+    fn default_priority_is_realtime() {
+        assert_eq!(default_priority(), "realtime");
+    }
+
+    #[test]
+    fn default_swarm_size_is_5() {
+        assert_eq!(default_swarm_size(), 5);
+    }
+
+    #[test]
+    fn default_priority_is_not_empty() {
+        assert!(!default_priority().is_empty());
+    }
+
+    #[test]
+    fn default_swarm_size_is_nonzero() {
+        assert!(default_swarm_size() > 0);
+    }
+}

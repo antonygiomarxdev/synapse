@@ -1,32 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.28;
+pragma solidity 0.8.36;
 
 /// @title Synapse Stake Manager
 /// @notice Manages miner stakes and slashing on L2.
-/// Staking is required to participate as a miner in the swarm.
+/// @dev Staking is required to participate as a miner in the swarm.
 contract StakeManager {
-    // ─── State ──────────────────────────────────────────
-
+    /// @notice Info stored per miner node.
     struct StakeInfo {
         uint256 amount;
-        uint256 frozenUntil;  // 0 = not frozen
-        uint8 flags24h;       // divergence flags in last 24h (rolling)
-        uint256 firstFlagAt;  // timestamp of first flag in current 24h window
-        uint16 reputation;    // 0-1000
+        uint256 frozenUntil;
+        uint16 reputation;
+        uint8 flags24h;
+        uint256 firstFlagAt;
         bool banned;
     }
 
-    mapping(bytes32 => StakeInfo) public stakes;  // nodeId => stake
+    /// @notice Miner stake records, keyed by node ID.
+    mapping(bytes32 => StakeInfo) public stakes;
+    /// @notice Addresses authorized to call admin functions.
     mapping(bytes32 => bool) public authorizedMiners;
 
-    uint256 public constant MIN_STAKE = 100 * 1e6; // 100 USDC (6 decimals)
+    /// @notice Minimum stake required to mine. 100 USDC (6 decimals).
+    uint256 public constant MIN_STAKE = 100 * 1e6;
+    /// @notice Divergence flags before stake is frozen.
     uint256 public constant MAX_FLAGS_BEFORE_FREEZE = 10;
+    /// @notice Divergence flags before partial slashing.
     uint256 public constant MAX_FLAGS_BEFORE_SLASH = 50;
+    /// @notice Duration of stake freeze on flag threshold.
     uint256 public constant FREEZE_DURATION = 48 hours;
-    uint256 public constant SLASH_PERCENT = 20;  // 20%
+    /// @notice Percentage of stake slashed on threshold.
+    uint256 public constant SLASH_PERCENT = 20;
+    /// @notice Rolling window for flag counting.
     uint256 public constant FLAG_WINDOW = 24 hours;
-
-    // ─── Events ─────────────────────────────────────────
 
     event Staked(bytes32 indexed nodeId, uint256 amount);
     event Unstaked(bytes32 indexed nodeId, uint256 amount);
@@ -34,8 +39,6 @@ contract StakeManager {
     event Slashed(bytes32 indexed nodeId, uint256 amount);
     event Frozen(bytes32 indexed nodeId, uint256 until);
     event Banned(bytes32 indexed nodeId);
-
-    // ─── Modifiers ──────────────────────────────────────
 
     modifier onlyAuthorized() {
         require(authorizedMiners[bytes32(0)] || msg.sender == address(this), "unauthorized");
@@ -52,16 +55,12 @@ contract StakeManager {
         _;
     }
 
-    // ─── Core ───────────────────────────────────────────
-
     function stake(bytes32 nodeId) external payable notBanned(nodeId) {
         require(msg.value >= MIN_STAKE, "below minimum stake");
-
         stakes[nodeId].amount += msg.value;
         if (stakes[nodeId].reputation == 0) {
-            stakes[nodeId].reputation = 100; // Start at Bronze
+            stakes[nodeId].reputation = 100;
         }
-
         emit Staked(nodeId, msg.value);
     }
 
@@ -76,26 +75,17 @@ contract StakeManager {
         emit Unstaked(nodeId, amount);
     }
 
-    // ─── Flagging ───────────────────────────────────────
-
     function flag(bytes32 nodeId) external onlyAuthorized notBanned(nodeId) {
         StakeInfo storage info = stakes[nodeId];
-
-        // Reset rolling window if expired
         if (block.timestamp > info.firstFlagAt + FLAG_WINDOW) {
             info.flags24h = 0;
             info.firstFlagAt = block.timestamp;
         }
-
         if (info.firstFlagAt == 0) {
             info.firstFlagAt = block.timestamp;
         }
-
         info.flags24h++;
-
         emit Flagged(nodeId, info.flags24h);
-
-        // Graduated penalties
         if (info.flags24h >= MAX_FLAGS_BEFORE_SLASH) {
             _slash(nodeId, info);
         } else if (info.flags24h >= MAX_FLAGS_BEFORE_FREEZE) {
@@ -110,16 +100,12 @@ contract StakeManager {
         info.flags24h = 0;
         info.reputation = 0;
         info.frozenUntil = 0;
-
         if (info.amount < MIN_STAKE) {
             info.banned = true;
             emit Banned(nodeId);
         }
-
         emit Slashed(nodeId, slashAmount);
     }
-
-    // ─── Reputation ─────────────────────────────────────
 
     function updateReputation(bytes32 nodeId, uint16 newScore)
         external
