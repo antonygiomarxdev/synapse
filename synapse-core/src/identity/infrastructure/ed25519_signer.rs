@@ -1,4 +1,5 @@
 use crate::identity::ports::KeySigner;
+use crate::shared::DomainError;
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
 
 /// Ed25519 implementation of the [`KeySigner`] application port.
@@ -14,21 +15,17 @@ pub struct Ed25519Signer {
 impl Ed25519Signer {
     /// Creates a new `Ed25519Signer` from 32-byte public and secret keys.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the key material is not a valid Ed25519 key pair.
+    /// Returns `DomainError::SignatureVerificationFailed` if the public key
+    /// is not a valid Ed25519 verifying key.
     /// In production, keys come from [`KeyPair::generate`] or are
     /// loaded from persistent storage.
-    pub fn new(public: &[u8; 32], secret: &[u8; 32]) -> Self {
+    pub fn new(public: &[u8; 32], secret: &[u8; 32]) -> Result<Self, DomainError> {
         let signing_key = SigningKey::from_bytes(secret);
-        let verifying_key = VerifyingKey::from_bytes(public).expect("invalid Ed25519 public key");
-        // Validate that the key pair is consistent
-        assert_eq!(
-            signing_key.verifying_key(),
-            verifying_key,
-            "public key does not match secret key"
-        );
-        Self { signing_key, verifying_key }
+        let verifying_key = VerifyingKey::from_bytes(public)
+            .map_err(|_| DomainError::SignatureVerificationFailed)?;
+        Ok(Self { signing_key, verifying_key })
     }
 
     /// Generates a fresh Ed25519 key pair using OS randomness.
@@ -118,7 +115,7 @@ mod tests {
         let public = signer.public_key_bytes();
         let secret = signer.secret_key_bytes();
 
-        let reconstructed = Ed25519Signer::new(&public, &secret);
+        let reconstructed = Ed25519Signer::new(&public, &secret).unwrap();
         let msg = b"test";
         let sig = reconstructed.sign(msg);
         assert!(reconstructed.verify(msg, &sig));

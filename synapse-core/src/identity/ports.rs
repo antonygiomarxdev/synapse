@@ -57,7 +57,7 @@ mod tests {
     impl IdentityStore for InMemoryStore {
         fn save(&self, node: &Node) -> Result<(), DomainError> {
             let mut nodes = self.nodes.lock().unwrap();
-            if nodes.iter().any(|n| n.node_id == node.node_id) {
+            if nodes.iter().any(|n| n.stake_address == node.stake_address) {
                 return Err(DomainError::DuplicateStakeAddress {
                     address: node.stake_address.clone(),
                 });
@@ -125,12 +125,12 @@ mod tests {
     }
 
     #[test]
-    fn save_duplicate_node_id_is_rejected() {
+    fn save_duplicate_stake_address_is_rejected() {
         let store = InMemoryStore::new();
         let kp = KeyPair::generate();
         let (node, _) = Node::register(&kp, "0xdup".into()).unwrap();
         store.save(&node).unwrap();
         let result = store.save(&node);
-        assert!(result.is_err());
+        assert!(matches!(result, Err(DomainError::DuplicateStakeAddress { .. })));
     }
 }
