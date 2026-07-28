@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package synapse.proto;
+
+// DHT messages
+message DhtQuery {
+  bytes key = 1;
+}
+
+message DhtResponse {
+  bytes key = 1;
+  repeated bytes nodes = 2;
+  uint64 ttl = 3;
+}
+
+// Node announcement
+message NodeAnnounce {
+  bytes node_id = 1;
+  string node_type = 2;        // "light", "full", "speculative"
+  uint32 vram_mb = 3;
+  repeated string experts = 4;  // e.g. ["mixtral-8x7b/3", "mixtral-8x7b/7"]
+  float price_per_1m_tokens = 5;
+}
+
+message NodeHeartbeat {
+  bytes node_id = 1;
+  bool alive = 2;
+  uint32 latency_ms = 3;
+  uint32 uptime_seconds = 4;
+}
+
+// Inference
+message InferenceRequest {
+  bytes request_id = 1;
+  string model_id = 2;
+  string priority = 3;          // "realtime" | "batch"
+  uint32 swarm_size = 4;        // for speculative mode
+  repeated uint32 token_ids = 5;
+  float temperature = 6;
+  uint32 seed = 7;              // 0 for batch (deterministic)
+  uint32 max_tokens = 8;
+}
+
+message InferenceResponse {
+  bytes request_id = 1;
+  repeated uint32 token_ids = 2;
+  repeated float log_probs = 3;
+  bool finished = 4;
+}
+
+// Consensus
+message ConsensusVote {
+  bytes request_id = 1;
+  bytes node_id = 2;
+  repeated uint32 token_ids = 3;
+  uint32 token_index = 4;
+}
+
+message ConsensusResult {
+  bytes request_id = 1;
+  repeated uint32 consensus_tokens = 2;
+  repeated bytes divergent_nodes = 3;
+}

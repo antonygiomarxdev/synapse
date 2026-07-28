@@ -1,0 +1,35 @@
+# Synapse Node Default Configuration
+
+[node]
+# Node type determines which experts the auto-assigner selects
+# "light" = small models, 8-12GB VRAM
+# "full" = medium-large models, 16-24GB VRAM
+# "speculative" = complete models, 24GB+ VRAM
+type = "full"
+
+# Max VRAM the node is allowed to use (in MB)
+# 0 = auto-detect
+max_vram_mb = 0
+
+# Default price per 1M tokens (USD)
+# Miners can adjust this. Lower = more work, lower margin.
+price_per_1m_tokens = 0.10
+
+# Bootstrap nodes (comma-separated multiaddrs)
+# These are the initial DHT entry points.
+bootstrap_nodes = []
+
+[network]
+# STUN server for NAT traversal
+stun_server = "stun:stun.l.google.com:19302"
+
+# WebRTC port range
+port_range_start = 42000
+port_range_end = 42100
+
+[gateway]
+# Gateway URL for API access (client perspective)
+api_url = "http://localhost:8000"
+
+# Gateway health check interval (seconds)
+health_check_interval = 30
