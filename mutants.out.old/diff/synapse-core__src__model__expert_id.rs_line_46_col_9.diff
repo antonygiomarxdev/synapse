@@ -1,0 +1,21 @@
+--- synapse-core/src/model/expert_id.rs
++++ replace <impl std::fmt::Display for ExpertId>::fmt -> std::fmt::Result with Ok(Default::default())
+@@ -38,17 +38,17 @@
+     /// Useful when the model's expert count is validated elsewhere.
+     pub fn new_unchecked(model: ModelId, index: u32) -> Self {
+         Self { model, index }
+     }
+ }
+ 
+ impl std::fmt::Display for ExpertId {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+-        write!(f, "{}#{}", self.model, self.index)
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     fn kimi_model() -> ModelId {

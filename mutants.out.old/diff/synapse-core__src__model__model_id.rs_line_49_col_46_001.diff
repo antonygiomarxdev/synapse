@@ -1,0 +1,21 @@
+--- synapse-core/src/model/model_id.rs
++++ replace - with / in is_kebab_case
+@@ -41,17 +41,17 @@
+ /// Validates that a string is kebab-case: lowercase alphanumeric or hyphen,
+ /// no leading/trailing hyphens, no consecutive hyphens.
+ fn is_kebab_case(s: &str) -> bool {
+     if s.is_empty() {
+         return false;
+     }
+     let bytes = s.as_bytes();
+     // First and last must not be hyphens
+-    if bytes[0] == b'-' || bytes[bytes.len() - 1] == b'-' {
++    if bytes[0] == b'-' || bytes[bytes.len() / /* ~ changed by cargo-mutants ~ */ 1] == b'-' {
+         return false;
+     }
+     let mut prev_hyphen = false;
+     for &b in bytes {
+         match b {
+             b'a'..=b'z' | b'0'..=b'9' => prev_hyphen = false,
+             b'-' => {
+                 if prev_hyphen {

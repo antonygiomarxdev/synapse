@@ -1,0 +1,21 @@
+--- synapse-core/src/identity/node_id.rs
++++ replace != with == in NodeId::from_hex
+@@ -24,17 +24,17 @@
+     ///
+     /// Returns `None` if the string is not exactly 64 hex characters.
+     pub fn from_hex(hex: &str) -> Option<Self> {
+         if hex.len() != 64 {
+             return None;
+         }
+         let mut bytes = [0u8; 32];
+         for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
+-            if chunk.len() != 2 {
++            if chunk.len() == /* ~ changed by cargo-mutants ~ */ 2 {
+                 return None;
+             }
+             let high = hex_val(chunk[0])?;
+             let low = hex_val(chunk[1])?;
+             bytes[i] = (high << 4) | low;
+         }
+         Some(Self(bytes))
+     }

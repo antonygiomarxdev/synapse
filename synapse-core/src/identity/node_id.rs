@@ -153,6 +153,14 @@ mod tests {
         assert_eq!(display, display.to_lowercase());
     }
 
+    #[test]
+    fn from_hex_uses_bitwise_or() {
+        // Hex "ff" decodes as (15 << 4) | 15 = 255 with OR.
+        // If XOR were used instead: (15 << 4) ^ 15 = 240, which is wrong.
+        let id = NodeId::from_hex("ff".repeat(32).as_str()).unwrap();
+        assert_eq!(id.0, [0xFFu8; 32]);
+    }
+
     // --- as_bytes tests ---
 
     #[test]

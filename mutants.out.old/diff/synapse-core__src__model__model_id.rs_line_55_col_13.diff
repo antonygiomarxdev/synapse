@@ -1,0 +1,21 @@
+--- synapse-core/src/model/model_id.rs
++++ delete match arm b'a'..= b'z' | b'0'..= b'9' in is_kebab_case
+@@ -47,17 +47,17 @@
+     let bytes = s.as_bytes();
+     // First and last must not be hyphens
+     if bytes[0] == b'-' || bytes[bytes.len() - 1] == b'-' {
+         return false;
+     }
+     let mut prev_hyphen = false;
+     for &b in bytes {
+         match b {
+-            b'a'..=b'z' | b'0'..=b'9' => prev_hyphen = false,
++             /* ~ changed by cargo-mutants ~ */
+             b'-' => {
+                 if prev_hyphen {
+                     return false; // consecutive hyphens
+                 }
+                 prev_hyphen = true;
+             }
+             _ => return false, // invalid character
+         }

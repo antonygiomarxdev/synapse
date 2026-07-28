@@ -1,0 +1,30 @@
+--- synapse-core/src/gateway/catalog.rs
++++ replace <impl From<&ModelEntity> for ModelEntry>::from -> Self with Default::default()
+@@ -14,26 +14,17 @@
+     pub experts: u32,
+     pub active_per_token: u32,
+     pub context_window: u64,
+     pub license: String,
+ }
+ 
+ impl From<&ModelEntity> for ModelEntry {
+     fn from(m: &ModelEntity) -> Self {
+-        Self {
+-            id: m.id.to_string(),
+-            name: m.name.clone(),
+-            description: m.description.clone(),
+-            total_params: m.total_params.clone(),
+-            experts: m.experts,
+-            active_per_token: m.active_per_token,
+-            context_window: m.context_window,
+-            license: m.license.clone(),
+-        }
++        Default::default() /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ /// Loads the catalog from config and returns models as JSON.
+ pub async fn list_models() -> Json<Vec<ModelEntry>> {
+     let catalog = load_catalog();
+     let entries: Vec<ModelEntry> = catalog.list().iter().map(ModelEntry::from).collect();
+     Json(entries)

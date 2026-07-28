@@ -1,0 +1,21 @@
+--- synapse-core/src/model/expert_id.rs
++++ replace ExpertId::new_unchecked -> Self with Default::default()
+@@ -32,17 +32,17 @@
+         }
+         Ok(Self { model, index })
+     }
+ 
+     /// Creates an `ExpertId` without bounds checking.
+     ///
+     /// Useful when the model's expert count is validated elsewhere.
+     pub fn new_unchecked(model: ModelId, index: u32) -> Self {
+-        Self { model, index }
++        Default::default() /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ impl std::fmt::Display for ExpertId {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         write!(f, "{}#{}", self.model, self.index)
+     }
+ }

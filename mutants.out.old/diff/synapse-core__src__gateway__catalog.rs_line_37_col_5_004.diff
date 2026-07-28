@@ -1,0 +1,23 @@
+--- synapse-core/src/gateway/catalog.rs
++++ replace list_models -> Json<Vec<ModelEntry>> with Json::from_iter([vec![Default::default()]])
+@@ -29,19 +29,17 @@
+             context_window: m.context_window,
+             license: m.license.clone(),
+         }
+     }
+ }
+ 
+ /// Loads the catalog from config and returns models as JSON.
+ pub async fn list_models() -> Json<Vec<ModelEntry>> {
+-    let catalog = load_catalog();
+-    let entries: Vec<ModelEntry> = catalog.list().iter().map(ModelEntry::from).collect();
+-    Json(entries)
++    Json::from_iter([vec![Default::default()]]) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ /// Loads the Synapse catalog from `config/models.toml`.
+ fn load_catalog() -> Catalog {
+     let mut catalog = Catalog::new();
+     // Hardcoded for now; Task 5.3 will load from config/models.toml dynamically.
+     let kimi = ModelEntity::new(
+         ModelId::new("kimi-k3").unwrap(),

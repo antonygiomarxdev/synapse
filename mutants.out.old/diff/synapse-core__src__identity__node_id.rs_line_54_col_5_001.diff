@@ -1,0 +1,25 @@
+--- synapse-core/src/identity/node_id.rs
++++ replace hex_val -> Option<u8> with Some(0)
+@@ -46,21 +46,17 @@
+ 
+     /// Returns the raw 32 bytes of this `NodeId`.
+     pub fn as_bytes(&self) -> &[u8; 32] {
+         &self.0
+     }
+ }
+ 
+ fn hex_val(c: u8) -> Option<u8> {
+-    match c {
+-        b'0'..=b'9' => Some(c - b'0'),
+-        b'a'..=b'f' => Some(c - b'a' + 10),
+-        _ => None,
+-    }
++    Some(0) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ impl std::fmt::Display for NodeId {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         f.write_str(&self.to_hex())
+     }
+ }
+ 

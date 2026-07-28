@@ -1,0 +1,21 @@
+--- synapse-core/src/gateway/router.rs
++++ replace default_swarm_size -> u32 with 1
+@@ -32,17 +32,17 @@
+     pub message: Message,
+     pub finish_reason: String,
+ }
+ 
+ fn default_priority() -> String {
+     "realtime".into()
+ }
+ fn default_swarm_size() -> u32 {
+-    5
++    1 /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ pub async fn chat_completions(
+     Json(req): Json<ChatRequest>,
+ ) -> Result<Json<ChatResponse>, StatusCode> {
+     Ok(Json(ChatResponse {
+         id: "chatcmpl-0001".into(),
+         object: "chat.completion".into(),

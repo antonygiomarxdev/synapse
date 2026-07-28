@@ -1,0 +1,26 @@
+--- synapse-core/src/identity/key_pair.rs
++++ replace KeyPair::generate -> Self with Default::default()
+@@ -18,22 +18,17 @@
+ impl KeyPair {
+     /// Generates a fresh random key pair.
+     ///
+     /// Uses OS randomness via `rand`. The domain layer generates keys
+     /// directly — it does not delegate to a crypto library.
+     /// Infrastructure adapters validate that the key material is usable
+     /// for their specific algorithm.
+     pub fn generate() -> Self {
+-        let mut public = [0u8; 32];
+-        let mut secret = [0u8; 32];
+-        let mut rng = rand::thread_rng();
+-        rng.fill_bytes(&mut public);
+-        rng.fill_bytes(&mut secret);
+-        Self { public, secret }
++        Default::default() /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Returns a reference to the 32-byte public key.
+     pub fn public_key_bytes(&self) -> &[u8; 32] {
+         &self.public
+     }
+ 
+     /// Returns a reference to the 32-byte secret key.

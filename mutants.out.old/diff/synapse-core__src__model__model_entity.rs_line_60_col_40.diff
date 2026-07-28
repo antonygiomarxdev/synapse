@@ -1,0 +1,21 @@
+--- synapse-core/src/model/model_entity.rs
++++ replace / with % in ModelEntity::sparsity
+@@ -52,17 +52,17 @@
+             license,
+             hf_repo,
+             sha256,
+         }
+     }
+ 
+     /// The model's sparsity ratio: active_per_token / experts.
+     pub fn sparsity(&self) -> f64 {
+-        (self.active_per_token as f64) / (self.experts as f64)
++        (self.active_per_token as f64) % /* ~ changed by cargo-mutants ~ */ (self.experts as f64)
+     }
+ 
+     /// The minimum number of nodes needed to cover all experts
+     /// at `experts_per_node` experts per node.
+     pub fn min_nodes_for_coverage(&self, experts_per_node: u32) -> u32 {
+         self.experts.div_ceil(experts_per_node)
+     }
+ 

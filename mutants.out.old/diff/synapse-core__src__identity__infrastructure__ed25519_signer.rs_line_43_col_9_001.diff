@@ -1,0 +1,21 @@
+--- synapse-core/src/identity/infrastructure/ed25519_signer.rs
++++ replace Ed25519Signer::secret_key_bytes -> [u8; 32] with [1; 32]
+@@ -35,17 +35,17 @@
+         rand::thread_rng().fill_bytes(&mut secret);
+         let signing_key = SigningKey::from_bytes(&secret);
+         let verifying_key = signing_key.verifying_key();
+         Self { signing_key, verifying_key }
+     }
+ 
+     /// Returns the raw 32-byte secret key material.
+     pub fn secret_key_bytes(&self) -> [u8; 32] {
+-        self.signing_key.to_bytes()
++        [1; 32] /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ impl KeySigner for Ed25519Signer {
+     fn sign(&self, data: &[u8]) -> Vec<u8> {
+         let signature = self.signing_key.sign(data);
+         signature.to_bytes().to_vec()
+     }

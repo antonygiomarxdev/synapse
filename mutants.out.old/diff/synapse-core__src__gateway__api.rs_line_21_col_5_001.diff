@@ -1,0 +1,21 @@
+--- synapse-core/src/gateway/api.rs
++++ replace health -> Json<HealthResponse> with Json::from_iter([Default::default()])
+@@ -13,17 +13,17 @@
+ pub fn build_router() -> Router {
+     Router::new()
+         .route("/health", get(health))
+         .route("/v1/models", get(catalog::list_models))
+         .route("/v1/chat/completions", axum::routing::post(router::chat_completions))
+ }
+ 
+ async fn health() -> Json<HealthResponse> {
+-    Json(HealthResponse { status: "ok", version: env!("CARGO_PKG_VERSION"), swarm_nodes: 0 })
++    Json::from_iter([Default::default()]) /* ~ changed by cargo-mutants ~ */
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+     use axum::body::Body;
+     use axum::http::{Request, StatusCode};
+     use tower::ServiceExt;

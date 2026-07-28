@@ -1,0 +1,21 @@
+--- synapse-core/src/identity/node_id.rs
++++ replace NodeId::to_hex -> String with "xyzzy".into()
+@@ -36,17 +36,17 @@
+             let low = hex_val(chunk[1])?;
+             bytes[i] = (high << 4) | low;
+         }
+         Some(Self(bytes))
+     }
+ 
+     /// Returns the hex-encoded `NodeId` as a 64-character string.
+     pub fn to_hex(&self) -> String {
+-        self.0.iter().map(|b| format!("{b:02x}")).collect()
++        "xyzzy".into() /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Returns the raw 32 bytes of this `NodeId`.
+     pub fn as_bytes(&self) -> &[u8; 32] {
+         &self.0
+     }
+ }
+ 

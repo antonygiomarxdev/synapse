@@ -1,0 +1,21 @@
+--- synapse-core/src/identity/key_pair.rs
++++ replace == with != in <impl PartialEq for KeyPair>::eq
+@@ -39,17 +39,17 @@
+     /// Returns a reference to the 32-byte secret key.
+     pub fn secret_key_bytes(&self) -> &[u8; 32] {
+         &self.secret
+     }
+ }
+ 
+ impl PartialEq for KeyPair {
+     fn eq(&self, other: &Self) -> bool {
+-        self.public == other.public && self.secret == other.secret
++        self.public != /* ~ changed by cargo-mutants ~ */ other.public && self.secret == other.secret
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     #[test]

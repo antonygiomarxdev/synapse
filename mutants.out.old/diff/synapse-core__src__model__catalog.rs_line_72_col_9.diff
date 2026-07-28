@@ -1,0 +1,21 @@
+--- synapse-core/src/model/catalog.rs
++++ replace Catalog::is_empty -> bool with true
+@@ -64,17 +64,17 @@
+ 
+     /// Returns the number of registered models.
+     pub fn len(&self) -> usize {
+         self.models.len()
+     }
+ 
+     /// Returns `true` if the catalog is empty.
+     pub fn is_empty(&self) -> bool {
+-        self.models.is_empty()
++        true /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     fn make_model(id: &str, experts: u32, active: u32) -> ModelEntity {

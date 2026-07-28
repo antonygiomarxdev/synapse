@@ -1,0 +1,21 @@
+--- synapse-core/src/model/catalog.rs
++++ replace == with != in Catalog::find
+@@ -45,17 +45,17 @@
+ 
+     /// Returns all registered models.
+     pub fn list(&self) -> &[ModelEntity] {
+         &self.models
+     }
+ 
+     /// Finds a model by its [`ModelId`].
+     pub fn find(&self, id: &ModelId) -> Option<&ModelEntity> {
+-        self.models.iter().find(|m| m.id == *id)
++        self.models.iter().find(|m| m.id != /* ~ changed by cargo-mutants ~ */ *id)
+     }
+ 
+     /// Removes a model from the catalog.
+     ///
+     /// Returns `None` if no model with the given ID was registered.
+     pub fn remove(&mut self, id: &ModelId) -> Option<Vec<DomainEvent>> {
+         let pos = self.models.iter().position(|m| m.id == *id)?;
+         self.models.remove(pos);

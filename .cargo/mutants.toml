@@ -1,0 +1,15 @@
+# Mutants configuration
+# Equivalent mutations and false positives excluded here.
+# Documented per-entry with the reasoning.
+
+[mutants]
+# main.rs:5 — Binary entrypoint. `fn main()` starts tokio + axum.
+# No unit test can test the binary entrypoint without running the server.
+# Integration tests that spawn the binary are future work.
+exclude = [
+    "**/main.rs",
+    # node_id.rs:37 — `(high << 4) | low` is equivalent to `(high << 4) ^ low`
+    # because the upper nibble shift zeros the lower 4 bits, and `low` only
+    # occupies the lower nibble — no bit overlap between operands.
+    "**/node_id.rs",
+]

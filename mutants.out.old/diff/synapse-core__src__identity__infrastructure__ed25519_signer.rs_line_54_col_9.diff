@@ -1,0 +1,24 @@
+--- synapse-core/src/identity/infrastructure/ed25519_signer.rs
++++ replace <impl KeySigner for Ed25519Signer>::verify -> bool with true
+@@ -46,20 +46,17 @@
+ 
+ impl KeySigner for Ed25519Signer {
+     fn sign(&self, data: &[u8]) -> Vec<u8> {
+         let signature = self.signing_key.sign(data);
+         signature.to_bytes().to_vec()
+     }
+ 
+     fn verify(&self, data: &[u8], signature: &[u8]) -> bool {
+-        let Ok(sig) = ed25519_dalek::Signature::from_slice(signature) else {
+-            return false;
+-        };
+-        self.verifying_key.verify(data, &sig).is_ok()
++        true /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     fn public_key_bytes(&self) -> [u8; 32] {
+         self.verifying_key.to_bytes()
+     }
+ }
+ 
+ #[cfg(test)]

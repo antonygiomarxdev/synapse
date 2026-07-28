@@ -1,0 +1,21 @@
+--- synapse-core/src/identity/node_id.rs
++++ replace NodeId::as_bytes -> &[u8; 32] with Box::leak(Box::new([1; 32]))
+@@ -41,17 +41,17 @@
+ 
+     /// Returns the hex-encoded `NodeId` as a 64-character string.
+     pub fn to_hex(&self) -> String {
+         self.0.iter().map(|b| format!("{b:02x}")).collect()
+     }
+ 
+     /// Returns the raw 32 bytes of this `NodeId`.
+     pub fn as_bytes(&self) -> &[u8; 32] {
+-        &self.0
++        Box::leak(Box::new([1; 32])) /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ fn hex_val(c: u8) -> Option<u8> {
+     match c {
+         b'0'..=b'9' => Some(c - b'0'),
+         b'a'..=b'f' => Some(c - b'a' + 10),
+         _ => None,

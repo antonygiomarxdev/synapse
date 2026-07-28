@@ -1,0 +1,21 @@
+--- synapse-core/src/model/catalog.rs
++++ replace Catalog::list -> &[ModelEntity] with Vec::leak(vec![Default::default()])
+@@ -40,17 +40,17 @@
+         };
+ 
+         self.models.push(model);
+         Ok(vec![event])
+     }
+ 
+     /// Returns all registered models.
+     pub fn list(&self) -> &[ModelEntity] {
+-        &self.models
++        Vec::leak(vec![Default::default()]) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Finds a model by its [`ModelId`].
+     pub fn find(&self, id: &ModelId) -> Option<&ModelEntity> {
+         self.models.iter().find(|m| m.id == *id)
+     }
+ 
+     /// Removes a model from the catalog.

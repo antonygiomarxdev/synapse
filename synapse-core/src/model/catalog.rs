@@ -137,6 +137,14 @@ mod tests {
     }
 
     #[test]
+    fn non_empty_catalog_is_not_empty() {
+        let mut catalog = Catalog::new();
+        catalog.register(make_model("kimi-k3", 896, 16)).unwrap();
+        assert!(!catalog.is_empty());
+        assert_eq!(catalog.len(), 1);
+    }
+
+    #[test]
     fn find_unknown_returns_none() {
         let catalog = Catalog::new();
         let id = ModelId::new("unknown").unwrap();

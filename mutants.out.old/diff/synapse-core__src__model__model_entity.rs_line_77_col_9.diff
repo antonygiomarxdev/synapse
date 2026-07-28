@@ -1,0 +1,21 @@
+--- synapse-core/src/model/model_entity.rs
++++ replace <impl PartialEq for ModelEntity>::eq -> bool with true
+@@ -69,17 +69,17 @@
+     /// Total VRAM required per node: expert_size * experts_per_node + shared_params.
+     pub fn vram_per_node(&self, experts_per_node: u32) -> f64 {
+         (self.expert_size_gb * experts_per_node as f64) + self.shared_params_gb
+     }
+ }
+ 
+ impl PartialEq for ModelEntity {
+     fn eq(&self, other: &Self) -> bool {
+-        self.id == other.id
++        true /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     fn kimi() -> ModelId {

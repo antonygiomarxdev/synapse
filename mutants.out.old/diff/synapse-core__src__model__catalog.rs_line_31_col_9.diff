@@ -1,0 +1,33 @@
+--- synapse-core/src/model/catalog.rs
++++ replace Catalog::register -> Result<Vec<DomainEvent>, DomainError> with Ok(vec![])
+@@ -23,29 +23,17 @@
+ 
+     /// Registers a model in the catalog.
+     ///
+     /// # Errors
+     ///
+     /// Returns [`DomainError::DuplicateModel`] if a model with the
+     /// same [`ModelId`] is already registered.
+     pub fn register(&mut self, model: ModelEntity) -> Result<Vec<DomainEvent>, DomainError> {
+-        if self.models.iter().any(|m| m.id == model.id) {
+-            return Err(DomainError::DuplicateModel { model_id: model.id.to_string() });
+-        }
+-
+-        let event = DomainEvent::ModelAdded {
+-            event_id: Uuid::new_v4(),
+-            model_id: model.id.to_string(),
+-            experts: model.experts,
+-            active_per_token: model.active_per_token,
+-        };
+-
+-        self.models.push(model);
+-        Ok(vec![event])
++        Ok(vec![]) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     /// Returns all registered models.
+     pub fn list(&self) -> &[ModelEntity] {
+         &self.models
+     }
+ 
+     /// Finds a model by its [`ModelId`].

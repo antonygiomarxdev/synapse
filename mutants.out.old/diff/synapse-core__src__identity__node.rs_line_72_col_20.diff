@@ -1,0 +1,21 @@
+--- synapse-core/src/identity/node.rs
++++ replace == with != in Node::update_reputation
+@@ -64,17 +64,17 @@
+     }
+ 
+     /// Updates the node's reputation score.
+     ///
+     /// The score is clamped to `[0, MAX_REPUTATION]`.
+     /// Returns an event if the score changed.
+     pub fn update_reputation(&mut self, new_score: u16) -> Option<DomainEvent> {
+         let clamped = new_score.min(MAX_REPUTATION);
+-        if clamped == self.reputation {
++        if clamped != /* ~ changed by cargo-mutants ~ */ self.reputation {
+             return None;
+         }
+         let old = self.reputation;
+         self.reputation = clamped;
+         Some(DomainEvent::ReputationChanged {
+             event_id: uuid::Uuid::new_v4(),
+             node_id: self.node_id.to_string(),
+             old_score: old,

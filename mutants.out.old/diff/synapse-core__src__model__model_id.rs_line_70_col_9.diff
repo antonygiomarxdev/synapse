@@ -1,0 +1,21 @@
+--- synapse-core/src/model/model_id.rs
++++ replace <impl std::fmt::Display for ModelId>::fmt -> std::fmt::Result with Ok(Default::default())
+@@ -62,17 +62,17 @@
+             _ => return false, // invalid character
+         }
+     }
+     true
+ }
+ 
+ impl std::fmt::Display for ModelId {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+-        f.write_str(&self.0)
++        Ok(Default::default()) /* ~ changed by cargo-mutants ~ */
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     // --- valid model IDs ---

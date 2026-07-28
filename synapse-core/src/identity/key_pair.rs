@@ -94,4 +94,13 @@ mod tests {
         let kp2 = KeyPair { public: [1u8; 32], secret: [4u8; 32] };
         assert_ne!(kp1, kp2);
     }
+
+    #[test]
+    fn secret_key_bytes_returns_actual_secret() {
+        let secret = [0xABu8; 32];
+        let kp = KeyPair { public: [0u8; 32], secret };
+        assert_eq!(*kp.secret_key_bytes(), secret);
+        // Verify NOT returning a zero array or any other fixed value
+        assert_ne!(*kp.secret_key_bytes(), [0u8; 32]);
+    }
 }
