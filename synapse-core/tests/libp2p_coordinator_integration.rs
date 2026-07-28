@@ -28,7 +28,7 @@ fn coordinator_reaches_consensus_with_unanimous_engine() {
     let model = ModelId::new("kimi-k3").unwrap();
     let tokens = vec![Token::new("def", -0.5).unwrap(), Token::new(" fibo", -0.2).unwrap()];
     let engine = Arc::new(DeterministicEngine { tokens });
-    let coordinator = Libp2pSwarmCoordinator::new(engine);
+    let mut coordinator = Libp2pSwarmCoordinator::new(engine);
     let request = InferenceRequest {
         id: Uuid::new_v4(),
         model: model.clone(),

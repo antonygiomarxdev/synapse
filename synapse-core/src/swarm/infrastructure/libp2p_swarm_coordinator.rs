@@ -33,16 +33,21 @@ impl Libp2pSwarmCoordinator {
 }
 
 impl SwarmCoordinator for Libp2pSwarmCoordinator {
-    fn coordinate(&self, request: &InferenceRequest) -> Result<ConsensusResult, DomainError> {
+    fn coordinate(&mut self, request: &InferenceRequest) -> Result<ConsensusResult, DomainError> {
         // Simulated multi-node coordination for V1.
         let swarm = request.swarm.clone().ok_or(DomainError::InvalidSwarmSize { size: 0 })?;
         let mut outputs = Vec::with_capacity(swarm.swarm_size() as usize);
-        for i in 0..swarm.swarm_size() {
+        for (i, _seed) in swarm.seeds().iter().enumerate() {
             let node_id = NodeId::from_public_key(&[i as u8; 32]);
-            let output = self.engine.generate(request)?;
+            // Clone the request per node so future V2 can vary per-node config
+            // (e.g. bind the seed to the swarm field). V1 simulation ignores the
+            // seed value, but the iteration fulfills the doc contract.
+            let node_request = request.clone();
+            let output = self.engine.generate(&node_request)?;
             outputs.push(NodeOutput { node_id, tokens: output.tokens });
         }
-        let result = vote(request.id, &outputs, swarm.quorum())?;
+        self.last_outputs = outputs;
+        let result = vote(request.id, &self.last_outputs, swarm.quorum())?;
         Ok(result)
     }
 

@@ -49,7 +49,7 @@ pub trait InferenceEngine {
 /// trusted result.
 pub trait SwarmCoordinator {
     /// Coordinates a request across the swarm and returns the consensus.
-    fn coordinate(&self, request: &InferenceRequest) -> Result<ConsensusResult, DomainError>;
+    fn coordinate(&mut self, request: &InferenceRequest) -> Result<ConsensusResult, DomainError>;
 
     /// Returns the raw node outputs for the last coordinated request.
     ///

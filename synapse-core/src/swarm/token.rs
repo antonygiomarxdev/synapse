@@ -9,11 +9,17 @@ const MAX_TOKEN_TEXT_LEN: usize = 65_536;
 /// Tokens are the atomic unit of consensus. Two tokens are equal if
 /// their text and log_prob are equal. The `id` is a UUID for tracing
 /// individual tokens through the swarm.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Token {
     id: Uuid,
     text: String,
     log_prob: f64,
+}
+
+impl PartialEq for Token {
+    fn eq(&self, other: &Self) -> bool {
+        self.text == other.text && self.log_prob == other.log_prob
+    }
 }
 
 impl Token {
