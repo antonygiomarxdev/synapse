@@ -4,6 +4,7 @@
 //! (vLLM, llama.cpp, SGLang) implements. Protocol value objects
 //! mirror the bridge protobuf schema 1:1.
 
+pub mod infrastructure;
 pub mod ports;
 pub mod protocol;
 
