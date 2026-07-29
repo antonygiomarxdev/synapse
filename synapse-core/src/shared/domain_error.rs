@@ -63,6 +63,9 @@ pub enum DomainError {
     #[error("invalid route: {reason}")]
     InvalidRoute { reason: String },
 
+    #[error("invalid expert count: expected {expected}, got {actual}")]
+    InvalidExpertCount { expected: u64, actual: u64 },
+
     #[error("catalog load failed: {reason}")]
     CatalogLoadFailed { reason: String },
 

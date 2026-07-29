@@ -1,4 +1,5 @@
 pub mod consensus;
+pub mod coordinator;
 pub mod dag;
 pub mod infrastructure;
 pub mod ports;
