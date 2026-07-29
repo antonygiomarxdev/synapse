@@ -40,6 +40,10 @@ contract StakeManager {
     event Frozen(bytes32 indexed nodeId, uint256 until);
     event Banned(bytes32 indexed nodeId);
 
+    constructor() {
+        authorizedMiners[bytes32(0)] = true;
+    }
+
     modifier onlyAuthorized() {
         require(authorizedMiners[bytes32(0)] || msg.sender == address(this), "unauthorized");
         _;
@@ -122,5 +126,50 @@ contract StakeManager {
 
     function getStake(bytes32 nodeId) external view returns (uint256) {
         return stakes[nodeId].amount;
+    }
+
+    // --- Standalone freeze/unfreeze ---
+
+    function freeze(bytes32 nodeId, uint256 durationSeconds) external onlyAuthorized notBanned(nodeId) {
+        stakes[nodeId].frozenUntil = block.timestamp + durationSeconds;
+        emit Frozen(nodeId, stakes[nodeId].frozenUntil);
+    }
+
+    function unfreeze(bytes32 nodeId) external onlyAuthorized {
+        stakes[nodeId].frozenUntil = 0;
+    }
+
+    // --- Standalone ban/unban ---
+
+    function ban(bytes32 nodeId) external onlyAuthorized {
+        require(!stakes[nodeId].banned, "already banned");
+        stakes[nodeId].banned = true;
+        stakes[nodeId].reputation = 0;
+        emit Banned(nodeId);
+    }
+
+    function unban(bytes32 nodeId) external onlyAuthorized {
+        require(stakes[nodeId].banned, "not banned");
+        stakes[nodeId].banned = false;
+        stakes[nodeId].reputation = 100;
+        stakes[nodeId].flags24h = 0;
+    }
+
+    // --- Standalone slash ---
+
+    function slash(bytes32 nodeId, uint256 amount) external onlyAuthorized {
+        require(stakes[nodeId].amount >= amount, "insufficient stake");
+        stakes[nodeId].amount -= amount;
+        emit Slashed(nodeId, amount);
+    }
+
+    // --- View helpers ---
+
+    function isBanned(bytes32 nodeId) external view returns (bool) {
+        return stakes[nodeId].banned;
+    }
+
+    function isFrozen(bytes32 nodeId) external view returns (bool) {
+        return block.timestamp < stakes[nodeId].frozenUntil;
     }
 }

@@ -3,6 +3,7 @@ pub mod reputation;
 pub mod stake;
 pub mod route_assembly;
 pub mod ports;
+pub mod infrastructure;
 
 pub use pricing::{RouteCost, TokensPerMillion, cheapest_route};
 pub use reputation::{Reputation, Tier};
