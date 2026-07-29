@@ -2,6 +2,16 @@ use crate::economic::stake_amount::StakeAmount;
 use crate::shared::DomainError;
 use chrono::{DateTime, Duration, Utc};
 
+/// Flags before 48h freeze.
+pub const DEFAULT_FREEZE_THRESHOLD: u32 = 10;
+/// Flags before 20%% slash.
+pub const DEFAULT_SLASH_THRESHOLD: u32 = 50;
+/// Percentage of stake slashed.
+pub const DEFAULT_SLASH_PERCENTAGE: u8 = 20;
+/// Flags before full ban.
+pub const DEFAULT_BAN_THRESHOLD: u32 = 100;
+/// Duration of freeze when threshold is reached.
+pub const FREEZE_DURATION_HOURS: i64 = 48;
 /// Result of applying a slashing policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SlashingResult {
@@ -47,7 +57,12 @@ impl SlashingPolicy {
     /// - 50 flags → slash 20%
     /// - 100 flags → full slash + ban
     pub fn default_policy() -> Self {
-        Self::new(10, 50, 20, 100)
+        Self::new(
+            DEFAULT_FREEZE_THRESHOLD,
+            DEFAULT_SLASH_THRESHOLD,
+            DEFAULT_SLASH_PERCENTAGE,
+            DEFAULT_BAN_THRESHOLD,
+        )
     }
 
     /// Applies the slashing policy to a stake amount based on accumulated flags.
@@ -82,7 +97,7 @@ impl SlashingPolicy {
         }
 
         if flags >= self.freeze_threshold {
-            let until = now + Duration::hours(48);
+            let until = now + Duration::hours(FREEZE_DURATION_HOURS);
             return Ok(SlashingResult::Frozen { until });
         }
 

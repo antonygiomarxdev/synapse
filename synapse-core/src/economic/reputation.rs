@@ -1,6 +1,23 @@
 use crate::shared::DomainError;
 use serde::{Deserialize, Serialize};
 
+/// Maximum possible reputation score.
+pub const MAX_REPUTATION: u16 = 1000;
+/// Minimum score to enter Silver tier.
+pub const SILVER_THRESHOLD: u16 = 300;
+/// Minimum score to enter Gold tier.
+pub const GOLD_THRESHOLD: u16 = 600;
+/// Minimum score to enter Platinum tier.
+pub const PLATINUM_THRESHOLD: u16 = 850;
+/// Number of hours of inactivity before 1 reputation point decays.
+pub const DECAY_HOURS_PER_POINT: u32 = 24;
+/// Maximum score that qualifies as Bronze (`SILVER_THRESHOLD - 1`).
+pub const BRONZE_MAX: u16 = SILVER_THRESHOLD - 1;
+/// Maximum score that qualifies as Silver (`GOLD_THRESHOLD - 1`).
+pub const SILVER_MAX: u16 = GOLD_THRESHOLD - 1;
+/// Maximum score that qualifies as Gold (`PLATINUM_THRESHOLD - 1`).
+pub const GOLD_MAX: u16 = PLATINUM_THRESHOLD - 1;
+
 /// 4-tier reputation system governing routing priority and slashing risk.
 ///
 /// Tiers determine: priority in route selection (Platinum > ... > Bronze),
@@ -18,18 +35,18 @@ impl Tier {
     pub fn min_score(self) -> u16 {
         match self {
             Tier::Bronze => 0,
-            Tier::Silver => 300,
-            Tier::Gold => 600,
-            Tier::Platinum => 850,
+            Tier::Silver => SILVER_THRESHOLD,
+            Tier::Gold => GOLD_THRESHOLD,
+            Tier::Platinum => PLATINUM_THRESHOLD,
         }
     }
 
     /// Maps a raw score to its tier.
     pub fn from_score(score: u16) -> Tier {
         match score {
-            0..=299 => Tier::Bronze,
-            300..=599 => Tier::Silver,
-            600..=849 => Tier::Gold,
+            0..=BRONZE_MAX => Tier::Bronze,
+            SILVER_THRESHOLD..=SILVER_MAX => Tier::Silver,
+            GOLD_THRESHOLD..=GOLD_MAX => Tier::Gold,
             _ => Tier::Platinum,
         }
     }
@@ -49,8 +66,8 @@ impl Reputation {
     ///
     /// Returns [`DomainError::InvalidReputation`] if `score` exceeds 1000.
     pub fn new(score: u16) -> Result<Self, DomainError> {
-        if score > 1000 {
-            return Err(DomainError::InvalidReputation { score, max: 1000 });
+        if score > MAX_REPUTATION {
+            return Err(DomainError::InvalidReputation { score, max: MAX_REPUTATION });
         }
         Ok(Self(score))
     }
@@ -70,7 +87,7 @@ impl Reputation {
     /// `hours_inactive` is the number of hours since the node was last
     /// seen producing valid output.
     pub fn apply_decay(self, hours_inactive: u32) -> Reputation {
-        let days = hours_inactive / 24;
+        let days = hours_inactive / DECAY_HOURS_PER_POINT;
         let decay = (days as u16).min(self.0);
         Reputation(self.0 - decay)
     }
@@ -88,13 +105,13 @@ mod tests {
 
     #[test]
     fn reputation_accepts_max() {
-        let r = Reputation::new(1000).unwrap();
-        assert_eq!(r.score(), 1000);
+        let r = Reputation::new(MAX_REPUTATION).unwrap();
+        assert_eq!(r.score(), MAX_REPUTATION);
     }
 
     #[test]
     fn reputation_rejects_above_max() {
-        let err = Reputation::new(1001).unwrap_err();
+        let err = Reputation::new(MAX_REPUTATION + 1).unwrap_err();
         assert_eq!(err.to_string(), "invalid reputation score: 1001 (must be 0-1000)");
     }
 
