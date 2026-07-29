@@ -8,18 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from synapse_runtime.config import get_config
 from synapse_runtime.protocol import GenerateResponse
-
-# GPU memory utilization target (fraction of VRAM)
-GPU_MEMORY_UTILIZATION = 0.90
-# Maximum model context length
-MAX_MODEL_LEN = 32768
-# Default max tokens for generation
-DEFAULT_MAX_TOKENS = 256
-# Sampling defaults
-TEMPERATURE_DETERMINISTIC = 0.0
-TEMPERATURE_DEFAULT = 0.7
-LOGPROBS_COUNT = 1
 
 
 class EngineError(Exception):
@@ -37,6 +27,7 @@ class VllmEngine:
         self._llm: Any = None
         self._model_path: str = ""
         self._loaded_experts: list[int] = []
+        self._cfg = get_config()
 
     @property
     def is_loaded(self) -> bool:
@@ -70,8 +61,8 @@ class VllmEngine:
             self._llm = LLM(
                 model=model_path,
                 seed=seed,
-                gpu_memory_utilization=GPU_MEMORY_UTILIZATION,
-                max_model_len=MAX_MODEL_LEN,
+                gpu_memory_utilization=self._cfg.vllm.gpu_memory_utilization,
+                max_model_len=self._cfg.vllm.max_model_len,
             )
             self._model_path = model_path
             self._loaded_experts = list(expert_indices)
@@ -82,7 +73,7 @@ class VllmEngine:
         self,
         prompt_tokens: list[int],
         seed: int = 0,
-        max_tokens: int = DEFAULT_MAX_TOKENS,
+        max_tokens: int | None = None,
     ) -> GenerateResponse:
         """Generate tokens from a prompt.
 
@@ -113,11 +104,13 @@ class VllmEngine:
 
             sampling_params = SamplingParams(
                 temperature=(
-                    TEMPERATURE_DETERMINISTIC if seed == 0 else TEMPERATURE_DEFAULT
+                    self._cfg.vllm.temperature_deterministic
+                    if seed == 0
+                    else self._cfg.vllm.temperature_default
                 ),
                 seed=seed,
-                max_tokens=max_tokens,
-                logprobs=LOGPROBS_COUNT,
+                max_tokens=max_tokens or self._cfg.vllm.default_max_tokens,
+                logprobs=self._cfg.vllm.logprobs_count,
             )
 
             prompt = {"prompt_token_ids": prompt_tokens}

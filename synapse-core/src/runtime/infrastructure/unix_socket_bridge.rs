@@ -4,6 +4,7 @@
 //! messages and sending them over a Unix domain socket to the
 //! Python runtime process.
 
+use crate::config::RuntimeConfig;
 use crate::model::{ExpertId, ModelId};
 use crate::runtime::ports::InferencePort;
 use crate::shared::DomainError;
@@ -12,50 +13,59 @@ use crate::swarm::token::Token;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
-/// Read timeout in seconds for the Unix socket.
-const READ_TIMEOUT_SECS: u64 = 30;
-
 /// Bridge to a Python vLLM subprocess over a Unix domain socket.
 pub struct UnixSocketBridge {
     socket_path: String,
+    max_retries: u32,
+    read_timeout_secs: u64,
 }
 
 impl UnixSocketBridge {
-    /// Creates a new bridge connected to the given socket path.
-    pub fn new(socket_path: impl Into<String>) -> Self {
-        Self { socket_path: socket_path.into() }
+    /// Creates a new bridge from runtime configuration.
+    pub fn new(config: &RuntimeConfig) -> Self {
+        Self {
+            socket_path: config.socket_path.clone(),
+            max_retries: config.max_retries,
+            read_timeout_secs: config.read_timeout_secs,
+        }
     }
 
     /// Sends a length-prefixed request and reads the length-prefixed response.
     ///
     /// Wire format: 4-byte big-endian payload length + payload bytes.
-    /// Retries up to `MAX_RETRIES` times with exponential backoff.
+    /// Retries up to `max_retries` times with exponential backoff.
     fn send_request(&self, request_data: &[u8]) -> Result<Vec<u8>, DomainError> {
-        const MAX_RETRIES: u32 = 3;
         let mut last_error = String::new();
 
-        for attempt in 0..MAX_RETRIES {
+        for attempt in 0..self.max_retries {
             if attempt > 0 {
                 // Exponential backoff: 200ms (attempt 1), 400ms (attempt 2)
                 std::thread::sleep(std::time::Duration::from_millis(100 * (1 << attempt) as u64));
             }
 
-            match Self::try_send(&self.socket_path, request_data) {
+            match Self::try_send(&self.socket_path, request_data, self.read_timeout_secs) {
                 Ok(data) => return Ok(data),
                 Err(e) => last_error = e,
             }
         }
 
         Err(DomainError::StorageError {
-            message: format!("Runtime request failed after {MAX_RETRIES} retries: {last_error}"),
+            message: format!(
+                "Runtime request failed after {} retries: {last_error}",
+                self.max_retries,
+            ),
         })
     }
 
     /// Attempt a single send/receive transaction over the Unix socket.
-    fn try_send(socket_path: &str, request_data: &[u8]) -> Result<Vec<u8>, String> {
+    fn try_send(
+        socket_path: &str,
+        request_data: &[u8],
+        read_timeout_secs: u64,
+    ) -> Result<Vec<u8>, String> {
         let mut stream = UnixStream::connect(socket_path).map_err(|e| format!("connect: {e}"))?;
         stream
-            .set_read_timeout(Some(std::time::Duration::from_secs(READ_TIMEOUT_SECS)))
+            .set_read_timeout(Some(std::time::Duration::from_secs(read_timeout_secs)))
             .map_err(|e| format!("set timeout: {e}"))?;
 
         let len_bytes = (request_data.len() as u32).to_be_bytes();
@@ -180,7 +190,8 @@ mod tests {
     #[test]
     fn send_request_retries_on_failure() {
         // When socket doesn't exist, send_request should return an error
-        let bridge = UnixSocketBridge::new("/tmp/nonexistent-synapse-socket.sock");
+        let config = RuntimeConfig::default();
+        let bridge = UnixSocketBridge::new(&config);
         let result = bridge.send_request(&[1, 2, 3]);
         assert!(result.is_err());
         match result {

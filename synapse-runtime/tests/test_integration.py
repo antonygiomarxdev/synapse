@@ -11,6 +11,7 @@ import time
 
 import pytest
 
+from synapse_runtime.config import get_config
 from synapse_runtime.protocol import (
     GenerateRequest,
     GenerateResponse,
@@ -21,7 +22,7 @@ from synapse_runtime.protocol import (
     deserialize_response,
     serialize_request,
 )
-from synapse_runtime.server import RECV_CHUNK_SIZE, RuntimeServer
+from synapse_runtime.server import RuntimeServer
 
 pytestmark = pytest.mark.gpu
 
@@ -59,7 +60,7 @@ def _send_request(socket_path: str, data: bytes) -> bytes:
         chunks = []
         remaining = msg_len
         while remaining > 0:
-            chunk = sock.recv(min(remaining, RECV_CHUNK_SIZE))
+            chunk = sock.recv(min(remaining, get_config().runtime.recv_chunk_size))
             if not chunk:
                 break
             chunks.append(chunk)

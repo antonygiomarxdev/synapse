@@ -11,8 +11,11 @@ import logging
 import os
 import socket
 import threading
+import tomllib
+from pathlib import Path
 
 from synapse_runtime.auto_assign import detect_vram
+from synapse_runtime.config import get_config
 from synapse_runtime.engine import EngineError, VllmEngine
 from synapse_runtime.loader import ModelNotFoundError, download_model
 from synapse_runtime.protocol import (
@@ -30,17 +33,25 @@ from synapse_runtime.protocol import (
 
 logger = logging.getLogger(__name__)
 
-# Maps model_id to HuggingFace repository for download.
-MODEL_REPO_MAP: dict[str, str] = {
-    "mixtral-8x7b": "mistralai/Mixtral-8x7B-v0.1",
-    "kimi-k3": "moonshotai/Kimi-K3",
-    "deepseek-v2-lite": "deepseek-ai/DeepSeek-V2-Lite",
-    "qwen2.5-moe": "Qwen/Qwen2.5-57B-A14B",
-}
 
-SOCKET_BACKLOG = 5
-SOCKET_TIMEOUT = 0.5  # seconds
-RECV_CHUNK_SIZE = 65536
+def _load_model_repo_map() -> dict[str, str]:
+    """Load model_id -> HF repo mapping from models.toml."""
+    mapping: dict[str, str] = {}
+    try:
+        base = Path(__file__).resolve().parent.parent.parent
+        with open(base / "config" / "models.toml", "rb") as f:
+            data = tomllib.load(f)
+        for m in data.get("models", []):
+            mid = m.get("id")
+            repo = m.get("hf_repo")
+            if mid and repo:
+                mapping[mid] = repo
+    except (FileNotFoundError, PermissionError):
+        pass
+    return mapping
+
+
+MODEL_REPO_MAP = _load_model_repo_map()
 
 
 def _resolve_socket_path(socket_path: str) -> str:
@@ -76,17 +87,18 @@ class RuntimeServer:
         self._running = False
         self._thread: threading.Thread | None = None
         self._socket_path: str | None = None
+        self._cfg = get_config()
 
     @property
     def is_running(self) -> bool:
         """True if the server is accepting connections."""
         return self._running
 
-    def start(self, socket_path: str = "/tmp/synapse-runtime.sock") -> None:
+    def start(self, socket_path: str | None = None) -> None:
         """Start listening on a Unix domain socket.
 
         Args:
-            socket_path: Path for the Unix socket file.
+            socket_path: Path for the Unix socket file. Defaults to config value.
 
         Raises:
             ValueError: If the socket path contains path traversal.
@@ -95,7 +107,7 @@ class RuntimeServer:
         if self._running:
             return
 
-        resolved = _resolve_socket_path(socket_path)
+        resolved = _resolve_socket_path(socket_path or self._cfg.runtime.socket_path)
 
         # Clean up stale socket file
         if os.path.exists(resolved):
@@ -105,8 +117,8 @@ class RuntimeServer:
         self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             self._socket.bind(resolved)
-            self._socket.listen(SOCKET_BACKLOG)
-            self._socket.settimeout(SOCKET_TIMEOUT)
+            self._socket.listen(self._cfg.runtime.socket_backlog)
+            self._socket.settimeout(self._cfg.runtime.socket_timeout)
             self._running = True
 
             self._thread = threading.Thread(
@@ -279,7 +291,9 @@ class RuntimeServer:
 
             data = bytearray()
             while len(data) < msg_len:
-                chunk = conn.recv(min(msg_len - len(data), RECV_CHUNK_SIZE))
+                chunk = conn.recv(
+                    min(msg_len - len(data), self._cfg.runtime.recv_chunk_size)
+                )
                 if not chunk:
                     break
                 data.extend(chunk)
