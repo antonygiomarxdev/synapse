@@ -170,6 +170,7 @@ pub fn audit(reference: &[Token], candidate: &[Token], tolerance: f64) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::cloned_ref_to_slice_refs)]
 mod tests {
     use super::*;
     use crate::identity::NodeId;

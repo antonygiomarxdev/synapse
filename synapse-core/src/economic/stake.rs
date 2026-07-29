@@ -76,12 +76,7 @@ impl SlashingPolicy {
         slash_percentage: u8,
         ban_threshold: u32,
     ) -> Self {
-        Self {
-            freeze_threshold,
-            slash_threshold,
-            slash_percentage,
-            ban_threshold,
-        }
+        Self { freeze_threshold, slash_threshold, slash_percentage, ban_threshold }
     }
 
     /// The default V1 slashing policy:
@@ -139,10 +134,7 @@ mod tests {
     #[test]
     fn stake_amount_rejects_zero() {
         let err = StakeAmount::new(0).unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "invalid stake amount: stake must be non-zero"
-        );
+        assert_eq!(err.to_string(), "invalid stake amount: stake must be non-zero");
     }
 
     #[test]
@@ -170,10 +162,10 @@ mod tests {
 
     fn make_policy() -> SlashingPolicy {
         SlashingPolicy::new(
-            10,   // freeze at 10 flags
-            50,   // slash at 50 flags
-            20,   // 20% slash
-            100,  // ban at 100 flags
+            10,  // freeze at 10 flags
+            50,  // slash at 50 flags
+            20,  // 20% slash
+            100, // ban at 100 flags
         )
     }
 
@@ -208,10 +200,7 @@ mod tests {
         let mut stake = StakeAmount::new(5000).unwrap();
         let now = Utc::now();
         let result = policy.apply(&mut stake, 50, now).unwrap();
-        assert_eq!(
-            result,
-            SlashingResult::Slashed { amount: 1000, percentage: 20 }
-        );
+        assert_eq!(result, SlashingResult::Slashed { amount: 1000, percentage: 20 });
         assert_eq!(stake.amount(), 4000);
     }
 
@@ -231,9 +220,6 @@ mod tests {
         let mut stake = StakeAmount::new(5000).unwrap();
         let now = Utc::now();
         let err = policy.apply(&mut stake, 0, now).unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "invalid flag count: 0 (must be non-zero)"
-        );
+        assert_eq!(err.to_string(), "invalid flag count: 0 (must be non-zero)");
     }
 }

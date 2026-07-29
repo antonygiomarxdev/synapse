@@ -1,7 +1,7 @@
+use crate::economic::pricing::TokensPerMillion;
 use crate::identity::NodeId;
 use crate::model::ExpertId;
 use crate::shared::DomainError;
-use crate::economic::pricing::TokensPerMillion;
 
 use crate::model::ModelId;
 use std::collections::HashMap;
@@ -37,13 +37,9 @@ pub fn assemble_route(
     active_per_token: u32,
 ) -> Result<Vec<ExpertId>, DomainError> {
     // Group listings by ExpertId
-    let mut by_expert: HashMap<ExpertId, Vec<(TokensPerMillion, Option<&NodeId>)>> =
-        HashMap::new();
+    let mut by_expert: HashMap<ExpertId, Vec<(TokensPerMillion, Option<&NodeId>)>> = HashMap::new();
     for (expert_id, price, node) in experts_available {
-        by_expert
-            .entry(expert_id.clone())
-            .or_default()
-            .push((*price, *node));
+        by_expert.entry(expert_id.clone()).or_default().push((*price, *node));
     }
 
     let distinct_experts = by_expert.len() as u32;
@@ -78,9 +74,7 @@ pub fn assemble_route(
                 let score_a = node_a.map(|n| node_counts.get(n).copied().unwrap_or(0)).unwrap_or(0);
                 let score_b = node_b.map(|n| node_counts.get(n).copied().unwrap_or(0)).unwrap_or(0);
                 // Higher co-location score is better (reverse for min_by)
-                score_b
-                    .cmp(&score_a)
-                    .then_with(|| price_a.cmp(price_b))
+                score_b.cmp(&score_a).then_with(|| price_a.cmp(price_b))
             })
             .expect("expert has at least one listing");
 
@@ -126,9 +120,9 @@ mod tests {
 
         let experts = &[
             (e0.clone(), p10, Some(&node_a)),
-            (e0.clone(), p5, Some(&node_b)),   // cheaper replica for e0
+            (e0.clone(), p5, Some(&node_b)), // cheaper replica for e0
             (e1.clone(), p20, Some(&node_a)),
-            (e1.clone(), p10, Some(&node_b)),  // e1 on node_b too
+            (e1.clone(), p10, Some(&node_b)), // e1 on node_b too
         ];
 
         let route = assemble_route(&model, experts, 2).unwrap();

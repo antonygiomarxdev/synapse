@@ -18,7 +18,12 @@ pub trait StakeContract {
 
 /// Port implemented by the payment processing adapter.
 pub trait PaymentGateway {
-    fn pay(&self, node: &NodeId, price_per_million: TokensPerMillion, token_count: u64) -> Result<String, DomainError>;
+    fn pay(
+        &self,
+        node: &NodeId,
+        price_per_million: TokensPerMillion,
+        token_count: u64,
+    ) -> Result<String, DomainError>;
     fn verify_payment(&self, tx_hash: &str) -> Result<bool, DomainError>;
 }
 

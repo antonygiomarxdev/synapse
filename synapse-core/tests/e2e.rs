@@ -30,7 +30,7 @@ async fn server_starts_and_responds_to_health() {
     assert_eq!(resp.status(), 200);
 
     let models: serde_json::Value = resp.json().await.unwrap();
-    assert!(models.as_array().map_or(false, |arr| !arr.is_empty()));
+    assert!(models.as_array().is_some_and(|arr| !arr.is_empty()));
 }
 
 /// Verifies the server returns 404 for unknown routes.
