@@ -77,9 +77,18 @@ class TestVllmEngineGenerate:
         # Mock the LLM instance and its generate method
         mock_llm = MagicMock()
         mock_output = MagicMock()
+        mock_logprob_0 = MagicMock(logprob=-0.1)
+        mock_logprob_1 = MagicMock(logprob=-0.2)
+        mock_logprob_2 = MagicMock(logprob=-0.3)
         mock_output.outputs = [
-            MagicMock(token_ids=[42, 43, 44],
-                      logprobs=[-0.1, -0.2, -0.3])
+            MagicMock(
+                token_ids=[42, 43, 44],
+                logprobs=[
+                    {42: mock_logprob_0},
+                    {43: mock_logprob_1},
+                    {44: mock_logprob_2},
+                ],
+            )
         ]
         mock_llm.generate.return_value = [mock_output]
         mock_llm_class.return_value = mock_llm
@@ -88,6 +97,7 @@ class TestVllmEngineGenerate:
         engine.load_model("/models/test", [0])
 
         from synapse_runtime.protocol import GenerateResponse
+
         resp = engine.generate([1, 2, 3], seed=0, max_tokens=100)
 
         assert isinstance(resp, GenerateResponse)
@@ -96,16 +106,16 @@ class TestVllmEngineGenerate:
         assert resp.finished is True
 
     @patch("vllm.LLM")
-    def test_generate_requires_loaded_model(self,
-                                              mock_llm_class: MagicMock) -> None:
+    def test_generate_requires_loaded_model(self, mock_llm_class: MagicMock) -> None:
         """generate raises EngineError if no model is loaded."""
         engine = VllmEngine()
         with pytest.raises(EngineError, match="No model loaded"):
             engine.generate([1, 2], seed=0, max_tokens=10)
 
     @patch("vllm.LLM")
-    def test_generate_empty_prompt_returns_empty(self,
-                                                   mock_llm_class: MagicMock) -> None:
+    def test_generate_empty_prompt_returns_empty(
+        self, mock_llm_class: MagicMock
+    ) -> None:
         """Empty prompt produces empty output."""
         mock_llm = MagicMock()
         mock_llm.generate.return_value = []

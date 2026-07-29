@@ -125,7 +125,17 @@ class VllmEngine:
             for out in output.outputs:
                 token_ids.extend(out.token_ids)
                 if out.logprobs:
-                    log_probs.extend(out.logprobs)
+                    for pos_logprobs in out.logprobs:
+                        if isinstance(pos_logprobs, dict):
+                            # vLLM returns [{token_id: Logprob(...)}, ...]
+                            # Logprob is a namedtuple with .logprob, .rank
+                            best = max(
+                                pos_logprobs,
+                                key=lambda k: pos_logprobs[k].logprob,
+                            )
+                            log_probs.append(float(pos_logprobs[best].logprob))
+                        elif isinstance(pos_logprobs, (int, float)):
+                            log_probs.append(float(pos_logprobs))
 
             return GenerateResponse(
                 request_id=b"",
