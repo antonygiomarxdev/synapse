@@ -33,7 +33,7 @@ impl UnixSocketBridge {
 
         for attempt in 0..MAX_RETRIES {
             if attempt > 0 {
-                // Exponential backoff: 200ms, 400ms, 800ms
+                // Exponential backoff: 200ms (attempt 1), 400ms (attempt 2)
                 std::thread::sleep(std::time::Duration::from_millis(100 * (1 << attempt) as u64));
             }
 
