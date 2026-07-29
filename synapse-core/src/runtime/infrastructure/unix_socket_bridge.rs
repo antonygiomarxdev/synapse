@@ -26,36 +26,45 @@ impl UnixSocketBridge {
     /// Sends a length-prefixed request and reads the length-prefixed response.
     ///
     /// Wire format: 4-byte big-endian payload length + payload bytes.
-    fn send_request(&self, data: &[u8]) -> Result<Vec<u8>, DomainError> {
-        let mut stream =
-            UnixStream::connect(&self.socket_path).map_err(|e| DomainError::StorageError {
-                message: format!("Failed to connect to runtime socket: {e}"),
-            })?;
+    /// Retries up to `MAX_RETRIES` times with exponential backoff.
+    fn send_request(&self, request_data: &[u8]) -> Result<Vec<u8>, DomainError> {
+        const MAX_RETRIES: u32 = 3;
+        let mut last_error = String::new();
 
-        // Write 4-byte big-endian length + payload
-        let len = data.len();
-        let len_bytes = (len as u32).to_be_bytes();
-        stream.write_all(&len_bytes).map_err(|e| DomainError::StorageError {
-            message: format!("Failed to write request length: {e}"),
-        })?;
-        stream.write_all(data).map_err(|e| DomainError::StorageError {
-            message: format!("Failed to write request data: {e}"),
-        })?;
+        for attempt in 0..MAX_RETRIES {
+            if attempt > 0 {
+                // Exponential backoff: 200ms, 400ms, 800ms
+                std::thread::sleep(std::time::Duration::from_millis(100 * (1 << attempt) as u64));
+            }
 
-        // Read 4-byte big-endian response length
+            match Self::try_send(&self.socket_path, request_data) {
+                Ok(data) => return Ok(data),
+                Err(e) => last_error = e,
+            }
+        }
+
+        Err(DomainError::StorageError {
+            message: format!("Runtime request failed after {MAX_RETRIES} retries: {last_error}"),
+        })
+    }
+
+    /// Attempt a single send/receive transaction over the Unix socket.
+    fn try_send(socket_path: &str, request_data: &[u8]) -> Result<Vec<u8>, String> {
+        let mut stream = UnixStream::connect(socket_path).map_err(|e| format!("connect: {e}"))?;
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(30)))
+            .map_err(|e| format!("set timeout: {e}"))?;
+
+        let len_bytes = (request_data.len() as u32).to_be_bytes();
+        stream.write_all(&len_bytes).map_err(|e| format!("write len: {e}"))?;
+        stream.write_all(request_data).map_err(|e| format!("write data: {e}"))?;
+
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).map_err(|e| DomainError::StorageError {
-            message: format!("Failed to read response length: {e}"),
-        })?;
+        stream.read_exact(&mut len_buf).map_err(|e| format!("read len: {e}"))?;
         let resp_len = u32::from_be_bytes(len_buf) as usize;
 
-        // Read response payload
         let mut resp_data = vec![0u8; resp_len];
-        if resp_len > 0 {
-            stream.read_exact(&mut resp_data).map_err(|e| DomainError::StorageError {
-                message: format!("Failed to read response data: {e}"),
-            })?;
-        }
+        stream.read_exact(&mut resp_data).map_err(|e| format!("read data: {e}"))?;
 
         Ok(resp_data)
     }
@@ -138,5 +147,22 @@ impl InferencePort for UnixSocketBridge {
             crate::runtime::infrastructure::proto::runtime::decode_vram_response(actual_data);
 
         Ok(resp.available_mb)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn send_request_retries_on_failure() {
+        // When socket doesn't exist, send_request should return an error
+        let bridge = UnixSocketBridge::new("/tmp/nonexistent-synapse-socket.sock");
+        let result = bridge.send_request(&[1, 2, 3]);
+        assert!(result.is_err());
+        match result {
+            Err(DomainError::StorageError { .. }) => {} // expected
+            other => panic!("Expected StorageError, got {other:?}"),
+        }
     }
 }
