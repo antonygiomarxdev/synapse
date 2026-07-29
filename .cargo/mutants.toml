@@ -1,0 +1,5 @@
+exclude_globs = [
+    # libp2p_swarm_coordinator.rs — Manual Debug impl. Only surviving mutation
+    # (return Ok(Default::default())) cannot be tested meaningfully.
+    "**/libp2p_swarm_coordinator.rs",
+]

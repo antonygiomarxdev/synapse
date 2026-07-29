@@ -11,18 +11,21 @@ const SECONDS_PER_HOUR: i64 = 3600;
 /// Chronic divergers (10+ flags within `chronic_window_hours`) are flagged for slashing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReSyncPolicy {
-    divergence_limit: u32,
+    /// Number of divergences that triggers expulsion in a single request.
     expulsion_limit: u32,
+    /// Number of chronic flags required for slashing freeze.
     chronic_flag_threshold: u32,
+    /// Hours in the chronic-flag sliding window.
     chronic_window_hours: u32,
+    /// Per-request divergence count (cleared by `reset_request`).
     per_request_divergences: HashMap<NodeId, u32>,
+    /// Chronic flag timestamps (epoch seconds), keyed by node.
     chronic_flags: HashMap<NodeId, Vec<i64>>,
 }
 
 impl Default for ReSyncPolicy {
     fn default() -> Self {
         Self {
-            divergence_limit: 3,
             expulsion_limit: 3,
             chronic_flag_threshold: 10,
             chronic_window_hours: 24,
@@ -35,13 +38,11 @@ impl Default for ReSyncPolicy {
 impl ReSyncPolicy {
     /// Creates a policy with custom limits.
     pub fn new(
-        divergence_limit: u32,
         expulsion_limit: u32,
         chronic_flag_threshold: u32,
         chronic_window_hours: u32,
     ) -> Self {
         Self {
-            divergence_limit,
             expulsion_limit,
             chronic_flag_threshold,
             chronic_window_hours,
@@ -82,27 +83,8 @@ impl ReSyncPolicy {
     pub fn reset_request(&mut self) {
         self.per_request_divergences.clear();
     }
-
-    /// Divergence threshold before expulsion.
-    pub fn divergence_limit(&self) -> u32 {
-        self.divergence_limit
-    }
-
-    /// Exact number of divergences that triggers expulsion.
-    pub fn expulsion_limit(&self) -> u32 {
-        self.expulsion_limit
-    }
-
-    /// Number of chronic flags required for a slashing freeze.
-    pub fn chronic_flag_threshold(&self) -> u32 {
-        self.chronic_flag_threshold
-    }
-
-    /// Number of hours in the chronic-flag window.
-    pub fn chronic_window_hours(&self) -> u32 {
-        self.chronic_window_hours
-    }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,7 +133,7 @@ mod tests {
 
     #[test]
     fn chronic_window_filters_old_flags() {
-        let mut policy = ReSyncPolicy::new(3, 3, 5, 24);
+        let mut policy = ReSyncPolicy::new(3, 5, 24);
         let n = node(1);
         let now = 1_000_000_000i64;
         // 5 flags within window (recent)
@@ -181,42 +163,26 @@ mod tests {
         assert!(policy.should_expel(&a));
         assert!(!policy.should_expel(&b));
     }
-
-    #[test]
-    fn accessors_reflect_configured_values() {
-        let policy = ReSyncPolicy::new(5, 7, 15, 48);
-        assert_eq!(policy.divergence_limit(), 5);
-        assert_eq!(policy.expulsion_limit(), 7);
-        assert_eq!(policy.chronic_flag_threshold(), 15);
-        assert_eq!(policy.chronic_window_hours(), 48);
-    }
-
     #[test]
     fn is_chronic_at_exact_threshold() {
-        let mut policy = ReSyncPolicy::new(3, 3, 5, 24);
+        let mut policy = ReSyncPolicy::new(3, 5, 24);
         let n = node(1);
         let now = 1_000_000_000i64;
         for _ in 0..5 {
             policy.record_chronic_flag(n, now);
         }
         assert!(policy.is_chronic(&n, now));
-        // The 5 flags at `now` remain, even after resetting request divergences
-        assert_eq!(policy.chronic_window_hours(), 24);
-        assert!(policy.is_chronic(&n, now));
     }
 
     #[test]
     fn is_chronic_uses_strict_greater_than_cutoff() {
-        let mut policy = ReSyncPolicy::new(3, 3, 3, 24);
+        let mut policy = ReSyncPolicy::new(3, 3, 24);
         let n = node(1);
         let now = 1_000_000_000i64;
         let cutoff = now - 24 * SECONDS_PER_HOUR;
-        // 2 flags inside the window
         policy.record_chronic_flag(n, now);
         policy.record_chronic_flag(n, now);
-        // 1 flag exactly at the cutoff boundary
         policy.record_chronic_flag(n, cutoff);
-        // threshold is 3, but only 2 flags are > cutoff, so NOT chronic
         assert!(!policy.is_chronic(&n, now));
     }
 }

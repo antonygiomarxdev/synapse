@@ -13,7 +13,6 @@ pub enum Priority {
     Batch,
 }
 
-/// A request sent to an inference engine.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InferenceRequest {
     pub id: Uuid,
@@ -21,6 +20,19 @@ pub struct InferenceRequest {
     pub priority: Priority,
     pub swarm: Option<SpecSwarmConfig>,
     pub max_tokens: u32,
+}
+
+impl InferenceRequest {
+    /// Creates a new inference request.
+    pub fn new(
+        id: Uuid,
+        model: ModelId,
+        priority: Priority,
+        swarm: Option<SpecSwarmConfig>,
+        max_tokens: u32,
+    ) -> Self {
+        Self { id, model, priority, swarm, max_tokens }
+    }
 }
 
 /// Output from a single inference engine invocation.

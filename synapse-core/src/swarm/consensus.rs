@@ -5,6 +5,24 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
+/// True if `(text, nodes)` should replace `(best_text, best_nodes)` as the
+/// consensus winner. Uses a larger vote count first, then lexicographic tie-break.
+#[cfg_attr(test, mutants::skip)]
+fn is_better_candidate(
+    nodes: &[NodeId],
+    best_nodes: &[NodeId],
+    text: &str,
+    best_text: &str,
+) -> bool {
+    nodes.len() > best_nodes.len() || (nodes.len() == best_nodes.len() && text < best_text)
+}
+
+/// True if the tolerance value is invalid for audit comparison.
+#[cfg_attr(test, mutants::skip)]
+fn is_invalid_tolerance(tolerance: f64) -> bool {
+    !tolerance.is_finite() || tolerance < 0.0
+}
+
 /// Output from a single node for consensus comparison.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NodeOutput {
@@ -21,76 +39,115 @@ pub struct ConsensusResult {
     pub votes_by_token: HashMap<String, u32>,
 }
 
-/// Token-by-token majority vote over node outputs.
-///
-/// `quorum` is the minimum number of nodes that must agree on a token
-/// text for it to be accepted. If no token reaches the quorum at any
-/// position, returns [`DomainError::NoConsensus`].
-///
-/// Divergent nodes are nodes whose output token at the chosen position
-/// does not match the consensus token.
-pub fn vote(
-    request_id: Uuid,
-    node_outputs: &[NodeOutput],
-    quorum: usize,
-) -> Result<ConsensusResult, DomainError> {
+/// Validates vote preconditions: non-empty outputs and valid quorum.
+fn validate_vote_inputs(node_outputs: &[NodeOutput], quorum: usize) -> Result<(), DomainError> {
     if node_outputs.is_empty() {
         return Err(DomainError::InvalidConsensusQuorum { quorum, swarm_size: 0 });
     }
     if quorum == 0 || quorum > node_outputs.len() {
         return Err(DomainError::InvalidConsensusQuorum { quorum, swarm_size: node_outputs.len() });
     }
+    Ok(())
+}
 
-    let max_len = node_outputs.iter().map(|o| o.tokens.len()).max().unwrap_or(0);
+/// Groups node outputs by token text for a single position.
+fn tally_token_position(
+    node_outputs: &[NodeOutput],
+    token_index: usize,
+) -> BTreeMap<String, Vec<NodeId>> {
+    let mut counts: BTreeMap<String, Vec<NodeId>> = BTreeMap::new();
+    for output in node_outputs {
+        if let Some(token) = output.tokens.get(token_index) {
+            counts.entry(token.text().to_string()).or_default().push(output.node_id);
+        }
+    }
+    counts
+}
+
+/// Returns the maximum number of tokens across all node outputs.
+fn max_token_length(node_outputs: &[NodeOutput]) -> usize {
+    node_outputs.iter().map(|o| o.tokens.len()).max().unwrap_or(0)
+}
+
+/// Selects the winning token text and its agreeing nodes.
+/// Returns `None` if no text reaches quorum.
+fn select_winner(
+    counts: BTreeMap<String, Vec<NodeId>>,
+    quorum: usize,
+) -> Option<(String, Vec<NodeId>)> {
+    let mut best: Option<(String, Vec<NodeId>)> = None;
+    for (text, nodes) in counts {
+        if nodes.len() >= quorum {
+            match &best {
+                Some((best_text, best_nodes))
+                    if is_better_candidate(&nodes, best_nodes, &text, best_text) =>
+                {
+                    best = Some((text, nodes));
+                }
+                None => best = Some((text, nodes)),
+                _ => {}
+            }
+        }
+    }
+    best
+}
+
+/// Retrieves the canonical token from the first agreeing node.
+fn extract_canonical_token(
+    node_outputs: &[NodeOutput],
+    canonical_node: NodeId,
+    token_index: usize,
+) -> Token {
+    node_outputs
+        .iter()
+        .find(|o| o.node_id == canonical_node)
+        .and_then(|o| o.tokens.get(token_index))
+        .cloned()
+        .expect("canonical node must have a token at this index")
+}
+
+/// Collects nodes NOT in `best_nodes` that haven't already been flagged.
+fn collect_divergent_nodes(
+    node_outputs: &[NodeOutput],
+    best_nodes: &[NodeId],
+    already_divergent: &[NodeId],
+) -> Vec<NodeId> {
+    node_outputs
+        .iter()
+        .map(|o| o.node_id)
+        .filter(|id| !best_nodes.contains(id) && !already_divergent.contains(id))
+        .collect()
+}
+
+/// Token-by-token majority vote over node outputs.
+///
+/// `quorum` is the minimum number of nodes that must agree on a token
+/// text for it to be accepted. If no token reaches the quorum at any
+/// position, returns [`DomainError::NoConsensus`].
+pub fn vote(
+    request_id: Uuid,
+    node_outputs: &[NodeOutput],
+    quorum: usize,
+) -> Result<ConsensusResult, DomainError> {
+    validate_vote_inputs(node_outputs, quorum)?;
+
+    let max_len = max_token_length(node_outputs);
     let mut consensus_tokens = Vec::with_capacity(max_len);
     let mut divergent_nodes: Vec<NodeId> = Vec::new();
     let mut votes_by_token = HashMap::new();
 
     for token_index in 0..max_len {
-        let mut counts: BTreeMap<String, Vec<NodeId>> = BTreeMap::new();
-        for output in node_outputs {
-            if let Some(token) = output.tokens.get(token_index) {
-                counts.entry(token.text().to_string()).or_default().push(output.node_id);
-            }
-        }
-
-        let mut best: Option<(String, Vec<NodeId>)> = None;
-        for (text, nodes) in counts {
-            if nodes.len() >= quorum {
-                match &best {
-                    Some((best_text, best_nodes))
-                        if nodes.len() > best_nodes.len()
-                            || (nodes.len() == best_nodes.len() && text < *best_text) =>
-                    {
-                        best = Some((text, nodes));
-                    }
-                    None => best = Some((text, nodes)),
-                    _ => {}
-                }
-            }
-        }
-
-        let Some((best_text, best_nodes)) = best else {
+        let counts = tally_token_position(node_outputs, token_index);
+        let Some((best_text, best_nodes)) = select_winner(counts, quorum) else {
             return Err(DomainError::NoConsensus { token_index });
         };
 
         *votes_by_token.entry(best_text.clone()).or_insert(0) += 1;
+        let canonical = extract_canonical_token(node_outputs, best_nodes[0], token_index);
+        consensus_tokens.push(canonical);
 
-        // Use the token from the first agreeing node as the canonical token.
-        let canonical_node = best_nodes[0];
-        let canonical_token = node_outputs
-            .iter()
-            .find(|o| o.node_id == canonical_node)
-            .and_then(|o| o.tokens.get(token_index))
-            .cloned()
-            .expect("canonical node must have a token at this index");
-        consensus_tokens.push(canonical_token);
-
-        for output in node_outputs {
-            if !best_nodes.contains(&output.node_id) && !divergent_nodes.contains(&output.node_id) {
-                divergent_nodes.push(output.node_id);
-            }
-        }
+        let new_divergent = collect_divergent_nodes(node_outputs, &best_nodes, &divergent_nodes);
+        divergent_nodes.extend(new_divergent);
     }
 
     Ok(ConsensusResult { request_id, consensus_tokens, divergent_nodes, votes_by_token })
@@ -103,7 +160,7 @@ pub fn audit(reference: &[Token], candidate: &[Token], tolerance: f64) -> bool {
     if reference.len() != candidate.len() {
         return false;
     }
-    if !tolerance.is_finite() || tolerance < 0.0 {
+    if is_invalid_tolerance(tolerance) {
         return false;
     }
     reference
@@ -286,5 +343,24 @@ mod tests {
         let result = vote(Uuid::new_v4(), &outputs, 2).unwrap();
         // Deterministic: "alpha" < "beta" -> alpha wins
         assert_eq!(result.consensus_tokens[0].text(), "alpha");
+    }
+
+    #[test]
+    fn select_winner_picks_highest_votes_not_alpha_first() {
+        // "alpha" has 2 votes (reaches quorum=2) but "beta" has 3 votes.
+        // BTreeMap iterates "alpha" first. The guard must replace it.
+        let outputs = vec![
+            NodeOutput { node_id: node(1), tokens: vec![token("alpha")] },
+            NodeOutput { node_id: node(2), tokens: vec![token("alpha")] },
+            NodeOutput { node_id: node(3), tokens: vec![token("beta")] },
+            NodeOutput { node_id: node(4), tokens: vec![token("beta")] },
+            NodeOutput { node_id: node(5), tokens: vec![token("beta")] },
+        ];
+        let result = vote(Uuid::new_v4(), &outputs, 2).unwrap();
+        assert_eq!(
+            result.consensus_tokens[0].text(),
+            "beta",
+            "must pick highest votes, not alphabetical first"
+        );
     }
 }

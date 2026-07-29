@@ -4,13 +4,13 @@ use crate::swarm::consensus::{ConsensusResult, NodeOutput, vote};
 use crate::swarm::ports::{InferenceEngine, InferenceRequest, SwarmCoordinator};
 use std::sync::Arc;
 
-/// libp2p-based coordinator adapter.
+/// Local trait bridge for V1 swarm coordination.
 ///
-/// V1 uses the adapter as a local trait bridge. The full network
-/// transport will be added in a later phase; for now it simulates
-/// multi-node coordination by invoking the provided `InferenceEngine`
-/// multiple times with different swarm seeds.
-#[derive(Clone)]
+/// This is NOT a real libp2p transport. It simulates multi-node coordination
+/// by invoking the same `InferenceEngine` N times in-process. Full P2P
+/// transport will be added in Phase 6 (E2E Integration).
+///
+/// The name preserves API compatibility for the eventual libp2p adapter.
 pub struct Libp2pSwarmCoordinator {
     engine: Arc<dyn InferenceEngine>,
     last_outputs: Vec<NodeOutput>,
