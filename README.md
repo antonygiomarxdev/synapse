@@ -34,14 +34,15 @@ Synapse is in **thesis validation**. We're not building a global P2P marketplace
 | **GGUF format natively supports expert slicing** | [Spike: expert sharding](docs/superpowers/spikes/2026-07-29-expert-sharding-spike.md) — `data[0:20]` numpy slicing, no dequantization needed |
 | **Expert specialisation is real** | Shards produce divergent outputs — experts 0-19 and 20-39 learned different knowledge |
 | **Shared layers are identical across shards** | 194/194 tensors verified bit-identical — coordinator doesn't need full model |
-| **Coordinator routing validated** | gate_inp weights (384 KB total) + hidden state = routing decision, proven in [numpy spike](scripts/spike_moe_routing.py) |
+| **Coordinator routing validated** | gate_inp weights (384 KB total) + hidden state = routing decision, proven in [numpy spike](scripts/spike_moe_routing.py) and [Rust binary](synapse-core/src/bin/moe_routing.rs) — 8/8 experts identical vs direct broadcast |
+| **Coordinator V0 (Rust)** | `GateInpLayer`, `ExpertRoute`, `ExpertRouter` trait, `RoundRobinRouter` — domain types with tests |
 | Same principle as ESP32-AI | [Slava S ran 28.9M params on 512KB SRAM](https://www.tomshardware.com/tech-industry/artificial-intelligence/ai-developer-runs-28-9-million-parameter-model-on-usd10-esp32-s3-microcontroller-uses-googles-per-layer-embeddings-technique-stores-table-on-16mb-flash-memory) — wrote his own runtime, we wrote our own splitter |
 
 ### 🔄 In progress
 
 | What | Status |
 |---|---|
-| Coordinator V0 (Rust) | Architecture validated — building multi-worker MoE dispatch |
+| Worker dispatch (Unix socket + protobuf) | Pattern validated in spike.rs, pending coordinator integration |
 | Crash recovery / fault tolerance | Spike designed, pending |
 | Job model + async batch API | Next (MVP design phase) |
 | 2+ node real network | Needs more hardware or cloud GPUs |

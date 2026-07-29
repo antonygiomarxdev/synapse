@@ -146,11 +146,22 @@ La optimización (shards reales en workers) es post-MVP.
 
 ### Próximo paso: Coordinador V0 (Rust)
 
-Implementar el flujo real con:
-- `gate_inp` extraído del GGUF al iniciar (1 sola vez)
-- Rust ↔ Python worker vía Unix socket + protobuf (ya validado)
-- Workers Ollama con modelo completo
-- Métricas: overhead de ruteo, latencia E2E vs modelo completo local
+**✅ Implementado.** El coordinador usa solo `gate_inp` (384 KB) + hidden state para rutear.
+Ver [moe_routing spike](synapse-core/src/bin/moe_routing.rs).
+
+```
+cargo run --bin moe_routing -- /tmp/gate_inp.bin
+
+→ 8/8 experts identical vs direct broadcast
+→ Coordinator V0 validated
+```
+
+Componentes:
+- `synapse-core/src/swarm/coordinator.rs` — `GateInpLayer`, `ExpertRoute`, `ExpertRouter` trait, `RoundRobinRouter`
+- `synapse-core/src/bin/moe_routing.rs` — spike binario
+- `scripts/export_gate_inp.py` — extrae `gate_inp` del GGUF a binario (7.6 MB)
+
+Siguiente paso: conectar el coordinador con workers Ollama vía Unix socket + protobuf.
 
 ---
 
