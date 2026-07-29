@@ -126,7 +126,7 @@ fn decode_varint(data: &[u8], offset: &mut usize) -> Result<u64, String> {
 
 fn decode_uint32(fields: &ParsedFields, field_num: u32, default: u32) -> u32 {
     for &(num, wire_type, payload) in fields {
-        if num == field_num && wire_type == 0 {
+        if num == field_num && wire_type == WIRE_VARINT {
             let mut off = 0;
             if let Ok(v) = decode_varint(payload, &mut off) {
                 return v as u32;
@@ -142,7 +142,7 @@ fn decode_bool(fields: &ParsedFields, field_num: u32, default: bool) -> bool {
 
 fn decode_string_field(fields: &ParsedFields, field_num: u32, default: &str) -> String {
     for &(num, wire_type, payload) in fields {
-        if num == field_num && wire_type == 2 {
+        if num == field_num && wire_type == WIRE_LEN {
             return String::from_utf8_lossy(payload).to_string();
         }
     }
@@ -151,7 +151,7 @@ fn decode_string_field(fields: &ParsedFields, field_num: u32, default: &str) -> 
 
 fn decode_repeated_uint32(fields: &ParsedFields, field_num: u32) -> Vec<u32> {
     for &(num, wire_type, payload) in fields {
-        if num == field_num && wire_type == 2 {
+        if num == field_num && wire_type == WIRE_LEN {
             let mut result = Vec::new();
             let mut off = 0;
             while off < payload.len() {
@@ -169,7 +169,7 @@ fn decode_repeated_uint32(fields: &ParsedFields, field_num: u32) -> Vec<u32> {
 
 fn decode_repeated_float(fields: &ParsedFields, field_num: u32) -> Vec<f32> {
     for &(num, wire_type, payload) in fields {
-        if num == field_num && wire_type == 2 {
+        if num == field_num && wire_type == WIRE_LEN {
             let count = payload.len() / 4;
             let mut result = Vec::with_capacity(count);
             for i in 0..count {
@@ -192,15 +192,21 @@ fn parse_message(data: &[u8]) -> Result<ParsedFields<'_>, String> {
         let wire_type = (tag & 0x07) as u32;
 
         match wire_type {
-            0 => {
+            WIRE_VARINT => {
                 // Varint — payload is the encoded varint bytes
                 let start = offset;
                 let _value = decode_varint(data, &mut offset)?;
                 fields.push((field_number, wire_type, &data[start..offset]));
             }
-            2 => {
+            WIRE_LEN => {
                 // Length-delimited
                 let length = decode_varint(data, &mut offset)? as usize;
+                if offset + length > data.len() {
+                    return Err(format!(
+                        "Truncated field {field_number}: declared {length} bytes, available {}",
+                        data.len() - offset,
+                    ));
+                }
                 let payload = &data[offset..offset + length];
                 offset += length;
                 fields.push((field_number, wire_type, payload));
@@ -241,13 +247,13 @@ pub fn decode_generate_response(data: &[u8]) -> GenerateBridgeResponse {
         request_id: vec![],
         token_ids: vec![],
         log_probs: vec![],
-        finished: true,
+        finished: false,
     }
 }
 
 fn decode_bytes_field(fields: &ParsedFields, field_num: u32) -> Vec<u8> {
     for &(num, wire_type, payload) in fields {
-        if num == field_num && wire_type == 2 {
+        if num == field_num && wire_type == WIRE_LEN {
             return payload.to_vec();
         }
     }
