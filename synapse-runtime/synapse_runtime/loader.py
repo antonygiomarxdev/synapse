@@ -86,3 +86,82 @@ def verify_sha256(model_path: str, expected_hash: str) -> bool:
     """
     actual = compute_sha256(model_path)
     return actual == expected_hash
+
+
+class ExpertExtractionError(Exception):
+    """Raised when expert weights cannot be extracted from a checkpoint."""
+
+
+def extract_experts(
+    model_path: str, expert_indices: list[int]
+) -> dict[int, bytes]:
+    """Extract expert weights from safetensors checkpoint files.
+
+    Searches all `.safetensors` files in the model directory for
+    tensors matching `model.experts.{index}.*` patterns.
+
+    Args:
+        model_path: Path to the model directory.
+        expert_indices: List of expert indices to extract.
+
+    Returns:
+        Dict mapping expert index to raw bytes of concatenated weights.
+
+    Raises:
+        ExpertExtractionError: If any requested expert is not found.
+    """
+    import json
+    import struct
+
+    root = Path(model_path)
+    if not root.is_dir():
+        raise ValueError(f"Not a directory: {model_path}")
+
+    safetensors_files = sorted(root.rglob("*.safetensors"))
+    if not safetensors_files:
+        raise ExpertExtractionError(
+            f"No .safetensors files found in {model_path}"
+        )
+
+    requested = set(expert_indices)
+    found: dict[int, bytearray] = {}
+
+    for sf_path in safetensors_files:
+        with open(sf_path, "rb") as f:
+            header_len_data = f.read(8)
+            header_len = struct.unpack("<Q", header_len_data)[0]
+            header_json = f.read(header_len)
+            header = json.loads(header_json.decode("utf-8"))
+
+            for tensor_name, meta in header.items():
+                # Match "model.experts.N." pattern
+                if not tensor_name.startswith("model.experts."):
+                    continue
+                parts = tensor_name.split(".")
+                if len(parts) < 3:
+                    continue
+                try:
+                    expert_idx = int(parts[2])
+                except ValueError:
+                    continue
+
+                if expert_idx not in requested:
+                    continue
+
+                start, end = meta["data_offsets"]
+                # Data starts after header: 8 bytes length + header bytes
+                data_start = 8 + header_len + start
+                f.seek(data_start)
+                tensor_data = f.read(end - start)
+                found.setdefault(expert_idx, bytearray()).extend(tensor_data)
+
+    # Verify all requested experts were found
+    missing = requested - set(found.keys())
+    if missing:
+        raise ExpertExtractionError(
+            f"Expert{'s' if len(missing) > 1 else ''} "
+            f"{', '.join(str(m) for m in sorted(missing))} "
+            f"not found in {model_path}"
+        )
+
+    return {idx: bytes(data) for idx, data in found.items()}

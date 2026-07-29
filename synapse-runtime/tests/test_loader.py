@@ -1,10 +1,13 @@
 """Tests for weight loader."""
 
+from __future__ import annotations
+
 import hashlib
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from synapse_runtime.loader import ModelNotFoundError, download_model
@@ -105,3 +108,76 @@ class TestSha256:
 
             # Empty dir: no files to hash -> sha256 of empty string
             assert verify_sha256(str(tmpdir), "any") is False
+
+
+class TestExtractExperts:
+    def test_extracts_single_expert_from_safetensors(self) -> None:
+        """Extract expert weights from a safetensors file."""
+
+        import numpy as np
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a minimal safetensors file with expert weights
+            weights = {"model.experts.0.weight": np.array([1.0, 2.0, 3.0],
+                                                            dtype=np.float32)}
+            _write_safetensors(Path(tmpdir) / "model-00001.safetensors", weights)
+
+            from synapse_runtime.loader import extract_experts
+            result = extract_experts(str(tmpdir), [0])
+            assert 0 in result
+            data = result[0]
+            assert len(data) == 12  # 3 float32 values
+
+    def test_extracts_multiple_experts(self) -> None:
+        """Extract multiple experts from safetensors files."""
+        import numpy as np
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            weights = {
+                "model.experts.0.weight": np.array([1.0], dtype=np.float32),
+                "model.experts.3.weight": np.array([3.0], dtype=np.float32),
+            }
+            _write_safetensors(Path(tmpdir) / "model.safetensors", weights)
+
+            from synapse_runtime.loader import extract_experts
+            result = extract_experts(str(tmpdir), [0, 3])
+            assert result.keys() == {0, 3}
+
+    def test_missing_expert_raises(self) -> None:
+        """Requesting an expert not in the checkpoint raises ExpertExtractionError."""
+        import numpy as np
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            weights = {"model.experts.0.weight": np.array([1.0],
+                                                            dtype=np.float32)}
+            _write_safetensors(Path(tmpdir) / "model.safetensors", weights)
+
+            from synapse_runtime.loader import ExpertExtractionError, extract_experts
+
+            with pytest.raises(ExpertExtractionError, match="Expert 7"):
+                extract_experts(str(tmpdir), [0, 7])
+
+
+def _write_safetensors(filepath: Path, tensors: dict[str, np.ndarray]) -> None:
+    """Helper: write a minimal safetensors file."""
+    import json
+    import struct
+
+    header = {}
+    offset = 0
+    for name, arr in tensors.items():
+        dtype = "F32"
+        shape = list(arr.shape)
+        header[name] = {"dtype": dtype, "shape": shape,
+                        "data_offsets": [offset, offset + arr.nbytes]}
+        offset += arr.nbytes
+
+    header_json = json.dumps(header)
+    header_bytes = header_json.encode("utf-8")
+    header_len = struct.pack("<Q", len(header_bytes))
+
+    with open(filepath, "wb") as f:
+        f.write(header_len)
+        f.write(header_bytes)
+        for arr in tensors.values():
+            f.write(arr.tobytes())
