@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package synapse.proto.runtime;
+
+// Request to load a model with specific experts
+message LoadModelRequest {
+  string model_id = 1;
+  repeated uint32 expert_indices = 2;
+}
+
+// Response after model load attempt
+message LoadModelResponse {
+  bool success = 1;
+  string error = 2;
+  uint32 loaded_experts = 3;
+}
+
+// Token generation request
+message GenerateRequest {
+  bytes request_id = 1;
+  repeated uint32 token_ids = 2;
+  uint32 seed = 3;
+  uint32 max_tokens = 4;
+}
+
+// Token generation response (streamed per token or batched)
+message GenerateResponse {
+  bytes request_id = 1;
+  repeated uint32 token_ids = 2;
+  repeated float log_probs = 3;
+  bool finished = 4;
+}
+
+// SHA256 verification request
+message VerifyHashRequest {
+  string model_id = 1;
+  string expected_sha256 = 2;
+}
+
+// SHA256 verification response
+message VerifyHashResponse {
+  bool matches = 1;
+  string actual_sha256 = 2;
+}
+
+// VRAM query (no parameters needed)
+message VramQueryRequest {}
+
+// VRAM query response
+message VramQueryResponse {
+  uint32 total_mb = 1;
+  uint32 available_mb = 2;
+}
