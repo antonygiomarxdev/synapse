@@ -4,6 +4,10 @@ import os
 import tempfile
 from unittest.mock import MagicMock, patch
 
+from synapse_runtime.infrastructure.serializer import (
+    deserialize_response,
+    serialize_request,
+)
 from synapse_runtime.protocol import (
     GenerateRequest,
     GenerateResponse,
@@ -11,8 +15,6 @@ from synapse_runtime.protocol import (
     LoadModelResponse,
     VramQueryRequest,
     VramQueryResponse,
-    deserialize_response,
-    serialize_request,
 )
 from synapse_runtime.server import RuntimeServer
 

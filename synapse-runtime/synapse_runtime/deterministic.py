@@ -6,12 +6,15 @@ This is critical for the statistical audit mechanism in the swarm.
 
 from __future__ import annotations
 
-from synapse_runtime.engine import VllmEngine
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from synapse_runtime.domain.ports import InferencePort
 
 _VERIFY_MAX_TOKENS: int = 50
 
 
-def enforce_seed_zero(engine: VllmEngine) -> None:
+def enforce_seed_zero(engine: InferencePort) -> None:
     """Reload the current model with seed=0 to enforce determinism.
 
     Args:
@@ -28,7 +31,7 @@ def enforce_seed_zero(engine: VllmEngine) -> None:
     )
 
 
-def verify_determinism(engine: VllmEngine, prompt_tokens: list[int]) -> bool:
+def verify_determinism(engine: InferencePort, prompt_tokens: list[int]) -> bool:
     """Verify that two runs with seed=0 produce identical outputs.
 
     Runs the same prompt twice and compares token IDs and logprobs.

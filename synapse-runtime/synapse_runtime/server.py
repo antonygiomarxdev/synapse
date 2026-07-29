@@ -14,10 +14,15 @@ import threading
 import tomllib
 from pathlib import Path
 
+from synapse_runtime._config_loader import get_config
 from synapse_runtime.auto_assign import detect_vram
-from synapse_runtime.config import get_config
-from synapse_runtime.engine import EngineError, VllmEngine
-from synapse_runtime.loader import ModelNotFoundError, download_model
+from synapse_runtime.domain.exceptions import EngineError, ModelNotFoundError
+from synapse_runtime.engine import VllmEngine
+from synapse_runtime.infrastructure.serializer import (
+    deserialize_request,
+    serialize_response,
+)
+from synapse_runtime.loader import download_model
 from synapse_runtime.protocol import (
     GenerateRequest,
     GenerateResponse,
@@ -27,8 +32,6 @@ from synapse_runtime.protocol import (
     VerifyHashResponse,
     VramQueryRequest,
     VramQueryResponse,
-    deserialize_request,
-    serialize_response,
 )
 
 logger = logging.getLogger(__name__)

@@ -16,7 +16,7 @@ pub trait InferencePort {
     ///
     /// Returns [`DomainError::ModelNotFound`] if the model is not available.
     /// Returns [`DomainError::StorageError`] if VRAM is insufficient.
-    fn load(&self, model: &ModelId, experts: &[ExpertId]) -> Result<(), DomainError>;
+    fn load(&mut self, model: &ModelId, experts: &[ExpertId]) -> Result<(), DomainError>;
 
     /// Generates tokens for a single inference request.
     ///
@@ -24,7 +24,7 @@ pub trait InferencePort {
     ///
     /// Returns [`DomainError::InvalidTokenText`] or [`DomainError::InvalidTokenLogProb`] if the prompt contains invalid tokens.
     /// Returns [`DomainError::StorageError`] if the runtime encounters an error.
-    fn generate(&self, request: &InferenceRequest) -> Result<InferenceOutput, DomainError>;
+    fn generate(&mut self, request: &InferenceRequest) -> Result<InferenceOutput, DomainError>;
 
     /// Verifies that a model's weights match the expected SHA256 hash.
     ///
@@ -33,7 +33,7 @@ pub trait InferencePort {
     /// # Errors
     ///
     /// Returns [`DomainError::ModelNotFound`] if the model is not loaded.
-    fn verify(&self, model: &ModelId, expected_hash: &str) -> Result<bool, DomainError>;
+    fn verify(&mut self, model: &ModelId, expected_hash: &str) -> Result<bool, DomainError>;
 
     /// Detects available VRAM on the compute node.
     ///
@@ -42,7 +42,7 @@ pub trait InferencePort {
     /// # Errors
     ///
     /// Returns [`DomainError::StorageError`] if VRAM detection fails.
-    fn detect_vram(&self) -> Result<u32, DomainError>;
+    fn detect_vram(&mut self) -> Result<u32, DomainError>;
 }
 
 #[cfg(test)]
@@ -52,14 +52,14 @@ mod tests {
 
     /// Trait is object-safe for dynamic dispatch in tests.
     #[allow(dead_code)]
-    fn assert_object_safe(_port: &dyn super::InferencePort) {}
+    fn assert_object_safe(_port: &mut dyn super::InferencePort) {}
 
     /// The trait has exactly 4 methods.
     #[test]
     fn trait_has_four_methods() {
         // compile-time assertion: if a method is added/removed,
         // the implementations in infrastructure/ must be updated.
-        fn _check(p: &dyn super::InferencePort) {
+        fn _check(p: &mut dyn super::InferencePort) {
             let _ = p.generate(&crate::swarm::ports::InferenceRequest::new(
                 uuid::Uuid::new_v4(),
                 crate::model::ModelId::new("test").unwrap(),

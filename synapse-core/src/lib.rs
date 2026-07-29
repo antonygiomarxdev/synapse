@@ -1,5 +1,3 @@
-pub mod config;
-
 pub mod dht;
 pub mod economic;
 pub mod gateway;

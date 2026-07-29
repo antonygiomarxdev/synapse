@@ -8,12 +8,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from synapse_runtime.config import get_config
+from synapse_runtime._config_loader import get_config
+from synapse_runtime.domain.exceptions import EngineError
 from synapse_runtime.protocol import GenerateResponse
-
-
-class EngineError(Exception):
-    """Raised when the inference engine encounters an error."""
 
 
 class VllmEngine:
@@ -73,7 +70,7 @@ class VllmEngine:
         self,
         prompt_tokens: list[int],
         seed: int = 0,
-        max_tokens: int | None = None,
+        max_tokens: int = 256,
     ) -> GenerateResponse:
         """Generate tokens from a prompt.
 

@@ -4,9 +4,9 @@
 //! messages and sending them over a Unix domain socket to the
 //! Python runtime process.
 
-use crate::config::RuntimeConfig;
 use crate::model::{ExpertId, ModelId};
 use crate::runtime::ports::InferencePort;
+use crate::runtime::protocol::RuntimeConfig;
 use crate::shared::DomainError;
 use crate::swarm::ports::{InferenceOutput, InferenceRequest};
 use crate::swarm::token::Token;
@@ -84,7 +84,7 @@ impl UnixSocketBridge {
 }
 
 impl InferencePort for UnixSocketBridge {
-    fn load(&self, model: &ModelId, experts: &[ExpertId]) -> Result<(), DomainError> {
+    fn load(&mut self, model: &ModelId, experts: &[ExpertId]) -> Result<(), DomainError> {
         let expert_indices: Vec<u32> = experts.iter().map(|e| e.index).collect();
         let req = crate::runtime::protocol::LoadModelRequest::new(model.clone(), expert_indices);
         let req_data =
@@ -102,7 +102,7 @@ impl InferencePort for UnixSocketBridge {
         if resp.success { Ok(()) } else { Err(DomainError::StorageError { message: resp.error }) }
     }
 
-    fn generate(&self, request: &InferenceRequest) -> Result<InferenceOutput, DomainError> {
+    fn generate(&mut self, request: &InferenceRequest) -> Result<InferenceOutput, DomainError> {
         let bridge_req = crate::runtime::protocol::GenerateBridgeRequest::new(
             request.id.as_bytes().to_vec(),
             request.prompt_tokens.clone(),
@@ -147,7 +147,7 @@ impl InferencePort for UnixSocketBridge {
         Ok(InferenceOutput { request_id: request.id, tokens })
     }
 
-    fn verify(&self, model: &ModelId, expected_hash: &str) -> Result<bool, DomainError> {
+    fn verify(&mut self, model: &ModelId, expected_hash: &str) -> Result<bool, DomainError> {
         let req = crate::runtime::protocol::VerifyBridgeRequest::new(
             model.clone(),
             expected_hash.to_string(),
@@ -166,7 +166,7 @@ impl InferencePort for UnixSocketBridge {
         Ok(resp.matches)
     }
 
-    fn detect_vram(&self) -> Result<u32, DomainError> {
+    fn detect_vram(&mut self) -> Result<u32, DomainError> {
         let req = crate::runtime::protocol::VramBridgeRequest;
         let req_data = crate::runtime::infrastructure::proto::runtime::encode_vram_request(&req);
 

@@ -4,7 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from synapse_runtime.engine import EngineError, VllmEngine
+from synapse_runtime.domain.exceptions import EngineError
+from synapse_runtime.engine import VllmEngine
 
 
 class TestVllmEngineLoadModel:

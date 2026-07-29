@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from synapse_runtime.loader import ModelNotFoundError, download_model
+from synapse_runtime.domain.exceptions import ModelNotFoundError
+from synapse_runtime.loader import download_model
 
 
 class TestDownloadModel:
@@ -150,7 +151,8 @@ class TestExtractExperts:
             weights = {"model.experts.0.weight": np.array([1.0], dtype=np.float32)}
             _write_safetensors(Path(tmpdir) / "model.safetensors", weights)
 
-            from synapse_runtime.loader import ExpertExtractionError, extract_experts
+            from synapse_runtime.domain.exceptions import ExpertExtractionError
+            from synapse_runtime.loader import extract_experts
 
             with pytest.raises(ExpertExtractionError, match="Expert 7"):
                 extract_experts(str(tmpdir), [0, 7])

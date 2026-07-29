@@ -194,3 +194,27 @@ mod tests {
         assert_eq!(resp.available_mb, 8192);
     }
 }
+/// Configuration for the runtime bridge.
+#[derive(Debug, Clone)]
+pub struct RuntimeConfig {
+    pub socket_path: String,
+    pub max_retries: u32,
+    pub read_timeout_secs: u64,
+}
+
+impl RuntimeConfig {
+    /// Creates a new runtime config with defaults.
+    pub fn new(socket_path: impl Into<String>, max_retries: u32, read_timeout_secs: u64) -> Self {
+        Self { socket_path: socket_path.into(), max_retries, read_timeout_secs }
+    }
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            socket_path: "/tmp/synapse-runtime.sock".into(),
+            max_retries: 3,
+            read_timeout_secs: 30,
+        }
+    }
+}

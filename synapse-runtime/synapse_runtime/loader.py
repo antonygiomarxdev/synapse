@@ -8,9 +8,7 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 from huggingface_hub.errors import RepositoryNotFoundError
 
-
-class ModelNotFoundError(Exception):
-    """Raised when a model cannot be found on HuggingFace Hub."""
+from synapse_runtime.domain.exceptions import ExpertExtractionError, ModelNotFoundError
 
 
 def download_model(hf_repo: str, cache_dir: str | None = None) -> str:
@@ -86,10 +84,6 @@ def verify_sha256(model_path: str, expected_hash: str) -> bool:
     """
     actual = compute_sha256(model_path)
     return actual == expected_hash
-
-
-class ExpertExtractionError(Exception):
-    """Raised when expert weights cannot be extracted from a checkpoint."""
 
 
 def extract_experts(model_path: str, expert_indices: list[int]) -> dict[int, bytes]:

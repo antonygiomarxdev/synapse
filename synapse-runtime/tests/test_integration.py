@@ -11,7 +11,11 @@ import time
 
 import pytest
 
-from synapse_runtime.config import get_config
+from synapse_runtime._config_loader import get_config
+from synapse_runtime.infrastructure.serializer import (
+    deserialize_response,
+    serialize_request,
+)
 from synapse_runtime.protocol import (
     GenerateRequest,
     GenerateResponse,
@@ -19,8 +23,6 @@ from synapse_runtime.protocol import (
     LoadModelResponse,
     VramQueryRequest,
     VramQueryResponse,
-    deserialize_response,
-    serialize_request,
 )
 from synapse_runtime.server import RuntimeServer
 

@@ -2,16 +2,18 @@
 
 import pytest
 
+from synapse_runtime.infrastructure.serializer import (
+    deserialize_request,
+    deserialize_response,
+    serialize_request,
+    serialize_response,
+)
 from synapse_runtime.protocol import (
     GenerateRequest,
     GenerateResponse,
     LoadModelRequest,
     VramQueryRequest,
     VramQueryResponse,
-    deserialize_request,
-    deserialize_response,
-    serialize_request,
-    serialize_response,
 )
 
 
