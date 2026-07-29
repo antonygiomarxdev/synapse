@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package synapse.spike;
+
+// Minimal request for the viability spike.
+// The Python worker receives this, tokenizes the prompt internally,
+// runs vLLM generation, and returns a SpikeResponse.
+message SpikeRequest {
+  string prompt = 1;         // raw text — worker handles tokenization
+  uint32 max_tokens = 2;     // generation limit (default: 64)
+  uint32 seed = 3;           // 0 = non-deterministic sampling
+}
+
+// Minimal response from the worker.
+message SpikeResponse {
+  string text = 1;            // generated text (empty on error)
+  uint32 tokens_generated = 2;
+  int64 elapsed_ms = 3;       // time spent inside vLLM generate()
+  bool finished = 4;          // false if truncated by max_tokens
+  string error = 5;           // empty on success
+}

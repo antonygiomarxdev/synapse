@@ -49,3 +49,10 @@ path = "src/lib.rs"
 [[bin]]
 name = "synapse-node"
 path = "src/main.rs"
+
+[build-dependencies]
+prost-build = "0.13"
+
+[[bin]]
+name = "spike"
+path = "src/bin/spike.rs"

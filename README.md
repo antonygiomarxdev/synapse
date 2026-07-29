@@ -1,323 +1,208 @@
 <p align="center">
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License">
-  <img src="https://img.shields.io/badge/status-mvp--in--development-orange" alt="Status: MVP">
+  <img src="https://img.shields.io/badge/status-validating%20thesis-orange" alt="Status: Validating thesis">
   <img src="https://img.shields.io/badge/rust-1.97%2B-orange" alt="Rust 1.97+">
   <img src="https://img.shields.io/badge/python-3.12%2B-blue" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/coverage-80%25%2B-brightgreen" alt="Coverage 80%+">
-  <img src="https://img.shields.io/badge/mutation-tested-brightgreen" alt="Mutation tested">
   <img src="https://img.shields.io/badge/CI-gauntlet%20passed-brightgreen" alt="Gauntlet passed">
 </p>
 
 # Synapse
 
-**Decentralized inference protocol for Mixture-of-Experts models.**
+**Decentralized inference for Mixture-of-Experts models — validating the thesis.**
 
-Synapse turns thousands of consumer GPUs into a single distributed inference swarm. Miners contribute idle hardware. Clients consume frontier AI. No datacenter. No gatekeeper. No rate limits.
-
-> *"Any MoE model, served by a swarm of consumer GPUs. Never says no."*
+> *Can a small network of heterogeneous GPUs complete inference jobs reliably, verifiably, and more affordably than a centralized alternative? We're testing that.*
 
 ---
 
-## Why Synapse?
+## Where we are (July 2026)
 
-MoE (Mixture-of-Experts) models like **Kimi K3**, DeepSeek-V2, and Mixtral are the future of LLM architecture. They work by activating only a small fraction of their total parameters per token — typically 1-2%. This means 98% of the model sits idle at any moment.
+Synapse is in **thesis validation**. We're not building a global P2P marketplace yet. We're answering one question first: does the core technical idea work?
 
-**Synapse exploits this property.** Instead of cramming the entire model into one datacenter GPU, the swarm distributes experts across hundreds of consumer GPUs. Each node holds just a handful of experts. Requests flow through the swarm, activating only the experts they need.
+### ✅ Validated
 
-### Example: Kimi K3 on Synapse
+| Claim | Evidence |
+|---|---|
+| Rust ↔ Python worker via Unix socket + protobuf works | [Spike: vLLM viability](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md) — 100% success, <2ms overhead |
+| Real GPU inference works through the pipeline | Qwen3 8B + Ollama backend — 100% success, 40 tok/s |
+| **MoE model runs through the pipeline** | **IBM Granite 3.1 MoE 3B — 40 experts, 8 active, 100% success** |
+| InferencePort abstraction is real | 3 backends (vLLM, Ollama, Mock) swapped without changing protocol |
+| NVML driver issues on Linux | [Documented workaround](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md#72-intento-con-gpu-real--bloqueado-por-driver-mismatch-2026-07-29) (reboot fixes it) |
+| vLLM + MoE needs >8 GB VRAM | [Documented](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md#73-gpu-real--ollama--qwen3-8b-q4_k_m-2026-07-29) — Qwen-MoE-A2.7B in FP16 = 7.1 GiB weights alone |
+| llama.cpp + GGUF fits MoE in 8 GB | Granite MoE 3B Q4_K_M = ~2 GB, works perfectly |
+| Same principle as ESP32-AI | [Slava S ran 28.9M params on 512KB SRAM](https://www.tomshardware.com/tech-industry/artificial-intelligence/ai-developer-runs-28-9-million-parameter-model-on-usd10-esp32-s3-microcontroller-uses-googles-per-layer-embeddings-technique-stores-table-on-16mb-flash-memory) using mmap + 4-bit — same technique, 16,000x more RAM here |
 
-Kimi K3 is a 2.8 trillion parameter MoE model from Moonshot AI — the frontier of open-weight AI. It has 896 experts, with only 16 active per token (~103B active parameters). Running the full model requires 8× AMD MI355X GPUs or similar datacenter hardware.
+### 🔄 In progress
 
-With Synapse:
-- 448 consumer GPUs each hold 2 experts (~3GB VRAM each in MXFP4)
-- Each token activates only 16 experts across ~8 nodes
-- KDA linear attention eliminates the growing KV cache — ideal for P2P distribution
-- The swarm self-organizes: hot experts auto-replicate, cold experts stay dormant
-- A developer in any country can use Kimi K3 without an API key, rate limit, or regional restriction
+| What | Status |
+|---|---|
+| Multi-worker coordination | Spike designed, pending |
+| Crash recovery / fault tolerance | Spike designed, pending |
+| Job model + async batch API | Next (MVP design phase) |
+| 2+ node real network | Needs more hardware or cloud GPUs |
 
-### The Pitch
+### ⏳ Post-MVP (not built yet)
 
-| | Centralized Providers | Synapse |
-|---|---|---|
-| **Availability** | Rate limits, downtime, regional blocks | Always on while nodes exist |
-| **Model selection** | Only what they choose to serve | Any open-weight MoE model |
-| **Access control** | API keys, waitlists, KYC | Open protocol, no permission needed |
-| **Hardware** | Datacenter H100s ($30K each) | Consumer GPUs (your gaming PC) |
-| **Censorship resistance** | Can be shut down, blocked | P2P mesh, no central authority |
-
-Synapse doesn't compete on speed. It competes on **absence of gatekeepers.**
-
----
-
-## How It Works
-
-### Two Swarm Modes
-
-| Mode | How | Latency | Use Case |
-|---|---|---|---|
-| **Speculative Swarm** | N nodes run the full model in parallel. Majority vote on each token. | ~1 node latency | Chat, IDEs, CLI agents |
-| **Swarm DAG** | True expert distribution. Requests flow through expert nodes. | Not latency-sensitive | CI/CD, codebase analysis, batch eval |
-
-### Speculative Swarm (Realtime)
-
-```
-Client: "Write a Rust function..."
-
-     ┌─────────────────────┐
-     │    Gateway (Rust)   │
-     │    axum + tokio     │
-     └──┬───┬───┬───┬───┬──┘
-        │   │   │   │   │
-   │Kimi│ │Kimi│ │Kimi│ │Kimi│ │Kimi│
-   │K3  │ │K3  │ │K3  │ │K3  │ │K3  │
-   └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘
-      │       │       │       │       │
-   "fn "   "fn "   "fn "   "pub"   "fn "
-      │       │       │       │       │
-      └───────┴───┬───┴───────┴───────┘
-                  │
-            CONSENSUS: "fn " (4/5)
-```
-
-- 5 nodes generate independently with different seeds
-- Majority token wins; minority nodes re-sync
-- **Latency = single-node latency** — no cross-node communication overhead
-
-### Swarm DAG (Batch)
-
-```
-Kimi K3: 896 experts, 16 active per token
-
-  Expert #12 held by: Node A ($0.08/1M tokens), Node B ($0.11)
-  Expert #47 held by: Node C ($0.09), Node D ($0.14)
-
-  Gateway assembles: A (#12) + C (#47) + ... = cheapest route
-  Client pays catalog price (gateway fee included)
-
-  Batch of 100 requests flows through expert DAG simultaneously
-
-- True expert distribution — each node only loads 2-5 experts
-- Gateway is the market maker: miners compete on price
-- Zero barrier to entry: any GPU can mine
+Everything below is **design intent, not working code**:
+- DHT / Kademlia node discovery
+- P2P expert distribution
+- Consensus / slashing / staking
+- On-chain payments (L2)
+- WebRTC transport
+- OpenAI-compatible chat streaming
 
 ---
 
-## Architecture
+## The vision (where we're going)
 
-```
-┌──────────────────────────────────────────────────────────┐
-│              SYNAPSE NODE (single Rust binary)           │
-│                                                          │
-│  ┌──────────────────────┐  ┌──────────────────────────┐ │
-│  │  Gateway (axum)      │  │  Swarm Core              │ │
-│  │  /v1/models          │  │  Consensus · DAG · KAD   │ │
-│  │  /v1/chat/completions│  │  DHT · Pricing · Stake   │ │
-│  └──────────┬───────────┘  └──────────┬───────────────┘ │
-│             │                         │                  │
-│             └─────────┬───────────────┘                  │
-│                       │                                  │
-│              Unix Socket + protobuf                      │
-│                       │                                  │
-│  ┌────────────────────▼──────────────────────────────┐  │
-│  │  Python Runtime (vLLM)                             │  │
-│  │  Weight Loader · Expert Management · Determinism   │  │
-│  └───────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────┘
-```
+MoE (Mixture-of-Experts) models like Kimi K3, DeepSeek-V2, and Mixtral activate only ~1-2% of their parameters per token. The other 98% sits idle.
 
-**Single binary.** Gateway + P2P core in Rust (axum + libp2p). Python only for vLLM inference runtime — communicates via Unix socket.
+**Synapse exploits this.** Instead of cramming the entire model into datacenter GPUs, the swarm distributes experts across consumer hardware. Each node holds a handful of experts. Requests flow through the swarm, activating only the experts they need.
 
-### Tech Stack
+The pitch:
+- No API keys, no rate limits, no regional blocks
+- Any open-weight MoE model
+- Consumer GPUs instead of datacenter H100s
+- Censorship-resistant P2P mesh
 
-| Layer | Language | Why |
-|---|---|---|
-| **Gateway + P2P Core** | Rust | Zero-cost abstractions, tokio async, <2ms p99, single binary |
-| **Inference Runtime** | Python | vLLM is Python-only. Isolated subprocess. |
-| **Smart Contracts** | Solidity | L2 standard (Solana programs also planned) |
+But first: **prove the core works.** See [pivot plan](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md).
 
 ---
 
-## Quick Start
-
-### Prerequisites
-- Rust 1.97+
-- Python 3.12+ (for vLLM runtime)
-- CUDA-capable GPU (for inference; DHT relay nodes can run CPU-only)
-
-### Build & Run
+## What actually runs today
 
 ```bash
 git clone https://github.com/antonygiomarxdev/synapse.git
 cd synapse
 
-# Build (single binary: gateway + swarm core)
+# Build
 cargo build --release
 
-# Run tests
-cargo test
+# Run all tests (gauntlet)
+make gauntlet
 
-# Start node (gateway + DHT + miner in one process)
-./target/release/synapse-node
+# Start the gateway (health + model list endpoints)
+cargo run --release
 # → Gateway on http://0.0.0.0:8000
-# → DHT peer active
-# → GPU detected, experts auto-assigned
+
+# Run the viability spike (Rust → Python → GPU inference)
+cargo run --bin spike -- --test=smoke --model=ollama:granite3.1-moe:3b
 ```
 
-### Inference Request
+### What `cargo run` actually does
 
-```bash
-curl http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "kimi-k3",
-    "priority": "realtime",
-    "swarm_size": 5,
-    "messages": [{"role": "user", "content": "Write a Rust function to merge two sorted arrays"}]
-  }'
+The gateway binary currently serves:
+- `GET /health` → `{"status": "ok"}`
+- `GET /v1/models` → hardcoded Kimi K3 catalog entry
+
+The `/v1/chat/completions` endpoint is a mock — it echoes back a static response. Real inference goes through the `spike` binary, which is a separate experiment (see spike doc).
+
+---
+
+## Current architecture
+
 ```
-
-Response:
-```json
-{
-  "id": "chatcmpl-0001",
-  "model": "kimi-k3",
-    "index": 0,
-    "message": {
-      "role": "assistant",
-      "content": "fn merge_sorted<T: Ord>(a: &[T], b: &[T]) -> Vec<T> { ..."
-    },
-    "finish_reason": "stop"
-  }]
-}
+┌──────────────────────────────────────────────────────────┐
+│              SYNAPSE NODE (Rust binary)                  │
+│                                                          │
+│  ┌──────────────────────┐                                │
+│  │  Gateway (axum)      │  ← /health, /v1/models (real) │
+│  │  /v1/chat/completions│  ← mock, pending batch API     │
+│  └──────────────────────┘                                │
+│                                                          │
+│  ┌──────────────────────┐                                │
+│  │  Spike (experiment)  │  ← Rust → Python worker        │
+│  │  src/bin/spike.rs    │     Unix socket + protobuf     │
+│  └──────────┬───────────┘     validates the pipeline      │
+│             │                                              │
+│    Unix socket + protobuf (spike.proto)                   │
+│             │                                              │
+│  ┌──────────▼───────────┐                                │
+│  │  Python Runtime      │  ← vLLM / Ollama / Mock        │
+│  │  synapse_runtime/    │     interchangeable backends   │
+│  └──────────────────────┘                                │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Project Structure
+## Tech stack (all implemented)
+
+| Layer | Language | What's built |
+|---|---|---|
+| Gateway | Rust (axum) | Health, model list, chat mock |
+| Spike coordinator | Rust (tokio) | Worker spawn, dispatch, metrics, crash test |
+| Inference runtime | Python | vLLM, Ollama, Mock backends via Unix socket |
+| Identity | Rust | NodeId (SHA-256 of Ed25519) |
+| Model catalog | Rust | ModelId, ModelEntity, hardcoded list |
+| Protocol | Protobuf | spike.proto (SpikeRequest/SpikeResponse) |
+| Stubs (not built) | Rust | DHT, WebRTC, Swarm, Economic, Slashing |
+
+---
+
+## Project structure
 
 ```
 synapse/
-├── synapse-core/            # Rust — everything in one crate
+├── synapse-core/            # Rust — single binary + spike
 │   ├── src/
-│   │   ├── main.rs          #   Binary entrypoint
-│   │   ├── gateway/         #   axum HTTP server, catalog, routing
-│   │   ├── identity/        #   NodeId, KeyPair, Node
-│   │   ├── model/           #   ModelId, ExpertId, Catalog
-│   │   ├── swarm/           #   Consensus, Speculative, DAG engines
-│   │   ├── economic/        #   Reputation, Pricing, Stake
-│   │   ├── transport/       #   WebRTC, Signalling
-│   │   └── dht/             #   Kademlia, Expert registry
-│   └── proto/               #   Protobuf schemas
-├── synapse-runtime/         # Python — vLLM adapter (subprocess)
-├── contracts/stake/         # Solidity — StakeManager
+│   │   ├── main.rs          #   Gateway binary (health + models)
+│   │   ├── bin/spike.rs     #   Viability spike (Rust → Python → GPU)
+│   │   ├── gateway/         #   axum HTTP: api, catalog, router (stubs)
+│   │   ├── identity/        #   NodeId (real), rest pending
+│   │   ├── model/           #   ModelId, ModelEntity (real)
+│   │   ├── swarm/           #   Stubs (consensus, DAG, speculative)
+│   │   ├── economic/        #   Stubs (reputation, pricing, stake)
+│   │   ├── transport/       #   Stubs (WebRTC, signalling)
+│   │   └── dht/             #   Stubs (Kademlia, registry)
+│   └── proto/               #   spike.proto + synapse.proto
+├── synapse-runtime/         # Python — worker with 3 backends
+│   └── synapse_runtime/
+│       └── worker.py        #   vLLM / Ollama / Mock engines
+├── contracts/stake/         # Solidity — StakeManager (prototype)
 ├── config/
-│   ├── models.toml          #   Curated model catalog
+│   ├── models.toml          #   Model catalog (aspirational)
 │   └── default.toml         #   Node defaults
-└── docs/                    #   Spec + implementation plan
+├── docs/superpowers/
+│   └── spikes/              #   Thesis validation evidence
+├── features/                #   BDD specs (behavioral contracts)
+└── scripts/
+    └── run_spike.sh         #   Spike runner
 ```
 
 ---
 
-## Model Catalog
-
-Curated and verified. Community proposals via PR.
-
-| Model | Params | Experts | Active | 🔥 For | License |
-|---|---|---|---|---|---|
-| Mixtral 8x7B | 46.7B | 8 | 2 | General purpose | Apache 2.0 |
-| **Kimi K3** | 2.8T | 896 | 16 | Frontier AI | MIT |
-| DeepSeek-V2 Lite | 16B | 64 | 6 | Lightweight edge | MIT |
-| Qwen2.5-MoE | 57B | 64 | 8 | Multilingual | Apache 2.0 |
-
----
-
-## How Miners Earn
-
-```
-Client pays $0.40/1M tokens → Gateway keeps 15-20% → Miner receives remainder
-
-Example (Kimi K2.7 Code, expert #12):
-  $0.08/1M tokens × 1000 requests × 1000 tokens = $0.08/batch
-  Average: $2-12/day depending on GPU, demand, and uptime
-Example (Kimi K3, expert #12):
-You earn for verified work only.
-Garbage output → no payment + reputation flag → slashing.
-```
-
----
-
-## Security
-
-### Consensus
-- **Realtime:** Ensemble voting. N nodes. Majority wins. Divergent → re-sync.
-- **Batch:** Statistical audit. ~5% verified by second expert set.
-
-### Slashing (fully automatic)
-1. Single divergence → no payment (re-sync)
-2. 3+ per request → expelled + flag
-3. 10+ flags/24h → stake frozen 48h
-4. 50+ flags/7d → 20% slashed
-5. Fraud → full slashing + ban
-
----
-
-## Roadmap
-
-**V1 — Swarm MVP (Q3-Q4 2026)**
-- [x] Spec + architecture design
-- [x] Repository scaffold (Rust + Python + Solidity)
-- [ ] Kademlia DHT + expert registry
-- [ ] Speculative Swarm (realtime consensus)
-- [ ] Swarm DAG (batch expert distribution)
-- [ ] vLLM runtime adapter
-- [ ] axum gateway (OpenAI-compatible)
-- [ ] USDC payments on L2
-
-**V2 — Scale & Privacy (2027)**
-- [ ] Kimi K3 swarm at scale (~448 nodes)
-- [ ] Split Inference privacy
-- [ ] Client SDKs (Python, TypeScript, Rust)
-
-**V3 — Kimi K3 Era (2028+)**
-- [ ] 3T+ class models
-- [ ] KDA-aware DAG parallelism
-- [ ] Governance DAO
-
----
-
-## The Quality Gauntlet
+## The quality gauntlet
 
 Every line of code — whether written by humans, Claude, Kimi, or a hamster — must pass the same gauntlet before merging:
 
-| Gate | Tool | Threshold |
-|---|---|---|
-| **Formatting** | rustfmt, ruff | Must match exactly |
-| **Linting** | clippy -D warnings, ruff | Zero warnings |
-| **Unit tests** | cargo test, pytest | All green |
-| **Coverage** | cargo-llvm-cov | ≥80% lines, ≥80% functions |
-| **Mutation testing** | cargo-mutants | All mutants killed |
-| **Security audit** | cargo-audit, cargo-deny | Zero CVEs |
-| **BDD specs** | Gherkin (features/) | All scenarios pass |
-| **Smart contracts** | hardhat test, solhint | All green |
-
 ```bash
-make gauntlet    # Run the full quality check
+make gauntlet   # Runs: fmt, lint, test, coverage, mutants, audit, BDD
 ```
 
-> *"I don't read my agents' code. I surround them with extreme constraints."* — Uncle Bob
+| Gate | Tool | Threshold |
+|---|---|---|
+| Formatting | rustfmt, ruff | Must match exactly |
+| Linting | clippy -D warnings, ruff | Zero warnings |
+| Unit tests | cargo test, pytest | All green |
+| Coverage | cargo-llvm-cov | ≥80% lines, ≥80% functions |
+| Mutation testing | cargo-mutants | All mutants killed |
+| Security audit | cargo-audit, cargo-deny | Zero CVEs |
+| BDD specs | Gherkin (features/) | All scenarios pass |
+| Smart contracts | hardhat test, solhint | All green |
 
 ---
 
- ## Contributing
+## Contributing
 
-Open source (Apache 2.0). Protocol, node software, and launcher are free.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md). All changes go through PR with gauntlet passing.
 
 ---
 
 ## License
 
-- Protocol: [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/)
-- Core, node, launcher: [Apache 2.0](LICENSE)
-- Reference gateway: BSL
+Apache 2.0. See [LICENSE](LICENSE).
+
+---
+
+*Synapse is validating a thesis. The README will update as evidence accumulates. Last updated: 2026-07-29 after [vLLM viability spike](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md).*
