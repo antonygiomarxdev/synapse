@@ -48,7 +48,7 @@ impl RouteCost {
     /// tuple field is a private same-crate detail — callers must use
     /// [`TokensPerMillion::new`] for validation.
     pub fn total(&self) -> TokensPerMillion {
-        let sum: u64 = self.prices.iter().map(|p| p.0).sum();
+        let sum: u64 = self.prices.iter().map(|p| p.tokens_per_million()).sum();
         TokensPerMillion(sum)
     }
 }
@@ -59,9 +59,8 @@ impl RouteCost {
 /// This function picks the minimum price for each expert and returns
 /// experts in input order with the total cost.
 ///
-/// Returns `None` for empty input. Returns `Some` with zero total cost
-/// if all experts have empty price lists (though in practice this should
-/// not happen — the DHT filters experts with no published price).
+/// Returns `Some` with the sum of minimum prices per expert (though in practice
+/// this should not happen — the DHT filters experts with no published price).
 pub fn cheapest_route(
     experts: &[(ExpertId, Vec<TokensPerMillion>)],
 ) -> Option<(Vec<ExpertId>, TokensPerMillion)> {
@@ -74,8 +73,8 @@ pub fn cheapest_route(
 
     for (expert_id, prices) in experts {
         route_experts.push(expert_id.clone());
-        if let Some(min_price) = prices.iter().min_by_key(|p| p.0) {
-            total_cost += min_price.0;
+        if let Some(min_price) = prices.iter().min_by_key(|p| p.tokens_per_million()) {
+            total_cost += min_price.tokens_per_million();
         }
     }
 

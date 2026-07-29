@@ -1,7 +1,6 @@
 use crate::economic::pricing::TokensPerMillion;
 use crate::identity::NodeId;
 use crate::model::ExpertId;
-use crate::model::ModelId;
 use crate::shared::DomainError;
 use std::collections::BTreeMap;
 
@@ -30,7 +29,6 @@ type ExpertListing<'a> = (ExpertId, TokensPerMillion, Option<&'a NodeId>);
 /// Returns [`DomainError::InvalidRoute`] if there aren't enough distinct
 /// experts to satisfy `active_per_token`.
 pub fn assemble_route(
-    _model: &ModelId,
     experts_available: &[ExpertListing<'_>],
     active_per_token: u32,
 ) -> Result<Vec<ExpertId>, DomainError> {
@@ -95,7 +93,7 @@ mod tests {
         ModelId::new("mixtral-8x7b").unwrap()
     }
 
-    fn make_node(_bytes: u8) -> NodeId {
+    fn make_node() -> NodeId {
         use crate::identity::KeyPair;
         let kp = KeyPair::generate();
         NodeId::from_public_key(kp.public_key_bytes())
@@ -110,8 +108,8 @@ mod tests {
         let model = make_model_id();
         let e0 = make_expert(&model, 0);
         let e1 = make_expert(&model, 1);
-        let node_a = make_node(1);
-        let node_b = make_node(2);
+        let node_a = make_node();
+        let node_b = make_node();
 
         let p5 = TokensPerMillion::new(5).unwrap();
         let p10 = TokensPerMillion::new(10).unwrap();
@@ -124,7 +122,7 @@ mod tests {
             (e1.clone(), p10, Some(&node_b)), // e1 on node_b too
         ];
 
-        let route = assemble_route(&model, experts, 2).unwrap();
+        let route = assemble_route(experts, 2).unwrap();
         // Should pick e0 on node_b (p5) and e1 on node_b (p10) — co-location bonus
         assert_eq!(route.len(), 2);
         assert!(route.contains(&e0));
@@ -135,12 +133,12 @@ mod tests {
     fn assemble_route_returns_error_when_expert_missing() {
         let model = make_model_id();
         let e0 = make_expert(&model, 0);
-        let node_a = make_node(1);
+        let node_a = make_node();
         let p10 = TokensPerMillion::new(10).unwrap();
 
         // Only expert 0 available, but we need 2 experts
         let experts = &[(e0.clone(), p10, Some(&node_a))];
-        let err = assemble_route(&model, experts, 2).unwrap_err();
+        let err = assemble_route(experts, 2).unwrap_err();
         assert!(err.to_string().contains("invalid route"));
     }
 
@@ -151,9 +149,9 @@ mod tests {
         let e1 = make_expert(&model, 1);
         let e2 = make_expert(&model, 2);
 
-        let node_a = make_node(1);
-        let node_b = make_node(2);
-        let node_c = make_node(3);
+        let node_a = make_node();
+        let node_b = make_node();
+        let node_c = make_node();
 
         let p10 = TokensPerMillion::new(10).unwrap();
         let p9 = TokensPerMillion::new(9).unwrap();
@@ -172,7 +170,7 @@ mod tests {
         ];
 
         // Active per token = 2, so we need 2 experts out of the 3 available
-        let route = assemble_route(&model, experts, 2).unwrap();
+        let route = assemble_route(experts, 2).unwrap();
         assert_eq!(route.len(), 2);
         // Route should prefer co-located pairs. node_a has {e0, e1} together.
         // node_c has {e1, e2}. The node_a pair costs 20, node_c pair costs 18.

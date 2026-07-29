@@ -1,6 +1,6 @@
 use crate::economic::ports::StakeContract;
 use crate::economic::reputation::Reputation;
-use crate::economic::stake::StakeAmount;
+use crate::economic::stake_amount::StakeAmount;
 use crate::identity::NodeId;
 use crate::shared::DomainError;
 

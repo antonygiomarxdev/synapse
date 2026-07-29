@@ -3,7 +3,7 @@ use crate::shared::DomainError;
 
 pub use crate::economic::pricing::TokensPerMillion;
 pub use crate::economic::reputation::Reputation;
-pub use crate::economic::stake::StakeAmount;
+pub use crate::economic::stake_amount::StakeAmount;
 
 /// Port implemented by the L2 staking contract adapter.
 pub trait StakeContract {
