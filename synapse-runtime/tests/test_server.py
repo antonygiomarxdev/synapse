@@ -131,12 +131,12 @@ class TestRuntimeServerSocketLifecycle:
             socket_path = os.path.join(tmpdir, "test.sock")
             server = RuntimeServer(engine=MagicMock())
 
-            # Start in background
-            import threading  # noqa: F401
+            # Start the server
+            server.start(socket_path)
+            assert os.path.exists(socket_path)
+            assert server.is_running
 
-            server._running = True  # Simulate running state
-
-            # Stop
+            # Stop the server
             server.stop()
-            # Socket should be cleaned up
             assert not os.path.exists(socket_path)
+            assert not server.is_running

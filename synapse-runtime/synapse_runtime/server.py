@@ -71,6 +71,7 @@ class RuntimeServer:
         self._socket: socket.socket | None = None
         self._running = False
         self._thread: threading.Thread | None = None
+        self._socket_path: str | None = None
 
     @property
     def is_running(self) -> bool:
@@ -95,11 +96,13 @@ class RuntimeServer:
         # Clean up stale socket file
         if os.path.exists(resolved):
             os.unlink(resolved)
+        self._socket_path = resolved
 
         self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             self._socket.bind(resolved)
             self._socket.listen(5)
+            self._socket.settimeout(0.5)
             self._running = True
 
             self._thread = threading.Thread(
@@ -121,7 +124,9 @@ class RuntimeServer:
             with contextlib.suppress(OSError):
                 self._socket.close()
         if self._thread:
-            self._thread.join(timeout=5.0)
+            self._thread.join()
+        if self._socket_path is not None and os.path.exists(self._socket_path):
+            os.unlink(self._socket_path)
 
     def handle_request(self, data: bytes) -> bytes:
         """Handle a single request and return the response.
@@ -138,21 +143,17 @@ class RuntimeServer:
             logger.error("Failed to deserialize request: %s", e)
             return _error_response(str(e))
 
-        try:
-            match request:
-                case LoadModelRequest():
-                    return self._handle_load_model(request)
-                case GenerateRequest():
-                    return self._handle_generate(request)
-                case VerifyHashRequest():
-                    return self._handle_verify_hash(request)
-                case VramQueryRequest():
-                    return self._handle_vram_query(request)
-                case _:
-                    return _error_response(f"Unknown request type: {type(request)}")
-        except Exception as e:
-            logger.exception("Error handling request")
-            return _error_response(str(e))
+        match request:
+            case LoadModelRequest():
+                return self._handle_load_model(request)
+            case GenerateRequest():
+                return self._handle_generate(request)
+            case VerifyHashRequest():
+                return self._handle_verify_hash(request)
+            case VramQueryRequest():
+                return self._handle_vram_query(request)
+            case _:
+                return _error_response(f"Unknown request type: {type(request)}")
 
     def _handle_load_model(self, req: LoadModelRequest) -> bytes:
         """Handle LoadModelRequest."""
@@ -166,6 +167,9 @@ class RuntimeServer:
                 loaded_experts=len(req.expert_indices),
             )
         except (ModelNotFoundError, EngineError) as e:
+            resp = LoadModelResponse(success=False, error=str(e), loaded_experts=0)
+        except Exception as e:
+            logger.exception("Load model failed unexpectedly")
             resp = LoadModelResponse(success=False, error=str(e), loaded_experts=0)
         return serialize_response(resp)
 
@@ -194,6 +198,15 @@ class RuntimeServer:
                 finished=True,
             )
             return serialize_response(resp)
+        except Exception:
+            logger.exception("Generate failed unexpectedly")
+            resp = GenerateResponse(
+                request_id=req.request_id,
+                token_ids=[],
+                log_probs=[],
+                finished=True,
+            )
+            return serialize_response(resp)
 
     def _handle_verify_hash(self, req: VerifyHashRequest) -> bytes:
         """Handle VerifyHashRequest."""
@@ -207,12 +220,19 @@ class RuntimeServer:
             resp = VerifyHashResponse(matches=matches, actual_sha256=actual)
         except ModelNotFoundError as e:
             resp = VerifyHashResponse(matches=False, actual_sha256=f"error: {e}")
+        except Exception as e:
+            logger.exception("Verify hash failed unexpectedly")
+            resp = VerifyHashResponse(matches=False, actual_sha256=f"error: {e}")
         return serialize_response(resp)
 
     def _handle_vram_query(self, _req: VramQueryRequest) -> bytes:
         """Handle VramQueryRequest."""
-        total, available = detect_vram()
-        resp = VramQueryResponse(total_mb=total, available_mb=available)
+        try:
+            total, available = detect_vram()
+            resp = VramQueryResponse(total_mb=total, available_mb=available)
+        except Exception as e:
+            logger.error("VRAM query failed: %s", e)
+            resp = VramQueryResponse(total_mb=0, available_mb=0)
         return serialize_response(resp)
 
     def _accept_loop(self, socket_path: str) -> None:
@@ -223,7 +243,9 @@ class RuntimeServer:
                     break
                 conn, _ = self._socket.accept()
                 self._handle_connection(conn)
-            except (OSError, TimeoutError):
+            except TimeoutError:
+                continue
+            except OSError:
                 if self._running:
                     logger.debug("Socket accept interrupted")
                 break
@@ -234,9 +256,12 @@ class RuntimeServer:
             with conn:
                 # Read length-prefixed message:
                 # 4-byte big-endian length + payload
-                length_data = conn.recv(4)
-                if len(length_data) < 4:
-                    return
+                length_data = bytearray()
+                while len(length_data) < 4:
+                    chunk = conn.recv(4 - len(length_data))
+                    if not chunk:
+                        return
+                    length_data.extend(chunk)
                 msg_len = int.from_bytes(length_data, "big")
 
                 data = bytearray()
