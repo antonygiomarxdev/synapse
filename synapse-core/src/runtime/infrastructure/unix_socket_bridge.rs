@@ -106,11 +106,21 @@ impl InferencePort for UnixSocketBridge {
         let resp =
             crate::runtime::infrastructure::proto::runtime::decode_generate_response(actual_data);
 
+        if resp.token_ids.len() != resp.log_probs.len() {
+            return Err(DomainError::InvalidTokenText {
+                reason: format!(
+                    "token_ids length ({}) != log_probs length ({})",
+                    resp.token_ids.len(),
+                    resp.log_probs.len()
+                ),
+            });
+        }
+
         let tokens: Vec<Token> = resp
             .token_ids
             .iter()
             .zip(resp.log_probs.iter())
-            .map(|(_, &lp)| Token::new(String::new(), lp as f64))
+            .map(|(&tid, &lp)| Token::new(tid.to_string(), lp as f64))
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(InferenceOutput { request_id: request.id, tokens })

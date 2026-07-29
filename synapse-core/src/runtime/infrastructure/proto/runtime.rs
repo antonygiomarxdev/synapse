@@ -150,9 +150,9 @@ fn decode_string_field(fields: &ParsedFields, field_num: u32, default: &str) -> 
 }
 
 fn decode_repeated_uint32(fields: &ParsedFields, field_num: u32) -> Vec<u32> {
+    let mut result = Vec::new();
     for &(num, wire_type, payload) in fields {
         if num == field_num && wire_type == WIRE_LEN {
-            let mut result = Vec::new();
             let mut off = 0;
             while off < payload.len() {
                 if let Ok(v) = decode_varint(payload, &mut off) {
@@ -161,25 +161,28 @@ fn decode_repeated_uint32(fields: &ParsedFields, field_num: u32) -> Vec<u32> {
                     break;
                 }
             }
-            return result;
         }
     }
-    Vec::new()
+    result
 }
 
 fn decode_repeated_float(fields: &ParsedFields, field_num: u32) -> Vec<f32> {
+    let mut result = Vec::new();
     for &(num, wire_type, payload) in fields {
         if num == field_num && wire_type == WIRE_LEN {
+            if payload.len() % 4 != 0 {
+                continue;
+            }
             let count = payload.len() / 4;
-            let mut result = Vec::with_capacity(count);
             for i in 0..count {
-                let bytes: [u8; 4] = payload[i * 4..(i + 1) * 4].try_into().unwrap_or([0; 4]);
+                let start = i * 4;
+                let end = (i + 1) * 4;
+                let bytes: [u8; 4] = payload[start..end].try_into().unwrap();
                 result.push(f32::from_le_bytes(bytes));
             }
-            return result;
         }
     }
-    Vec::new()
+    result
 }
 
 /// Parse a protobuf message into field tuples: (field_number, wire_type, payload).

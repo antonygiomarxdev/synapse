@@ -51,11 +51,10 @@ def _resolve_socket_path(socket_path: str) -> str:
     Raises:
         ValueError: If the path contains traversal components.
     """
-    # Prevent going outside allowed paths via ..
-    normalized = os.path.normpath(socket_path)
-    if ".." in normalized.split(os.sep):
+    resolved = os.path.realpath(socket_path)
+    if ".." in resolved.split(os.sep):
         raise ValueError(f"Path traversal denied in socket path: {socket_path}")
-    return os.path.realpath(normalized)
+    return resolved
 
 
 class RuntimeServer:
@@ -136,12 +135,15 @@ class RuntimeServer:
 
         Returns:
             Protobuf-encoded response bytes.
+
+        Raises:
+            ValueError: If the request cannot be deserialized or is unknown.
         """
         try:
             request = deserialize_request(data)
         except ValueError as e:
             logger.error("Failed to deserialize request: %s", e)
-            return _error_response(str(e))
+            raise
 
         match request:
             case LoadModelRequest():
@@ -153,7 +155,7 @@ class RuntimeServer:
             case VramQueryRequest():
                 return self._handle_vram_query(request)
             case _:
-                return _error_response(f"Unknown request type: {type(request)}")
+                raise ValueError(f"Unknown request type: {type(request)}")
 
     def _handle_load_model(self, req: LoadModelRequest) -> bytes:
         """Handle LoadModelRequest."""
@@ -176,6 +178,7 @@ class RuntimeServer:
     def _handle_generate(self, req: GenerateRequest) -> bytes:
         """Handle GenerateRequest."""
         if not self._engine.is_loaded:
+            logger.error("Generate request received but engine is not loaded")
             resp = GenerateResponse(
                 request_id=req.request_id,
                 token_ids=[],
@@ -276,16 +279,5 @@ class RuntimeServer:
                     # Write length-prefixed response
                     conn.sendall(len(response).to_bytes(4, "big"))
                     conn.sendall(response)
-        except OSError as e:
+        except (OSError, ValueError) as e:
             logger.debug("Connection error: %s", e)
-
-
-def _error_response(message: str) -> bytes:
-    """Create a GenerateResponse with an error message."""
-    resp = GenerateResponse(
-        request_id=b"",
-        token_ids=[],
-        log_probs=[],
-        finished=True,
-    )
-    return serialize_response(resp)

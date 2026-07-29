@@ -80,9 +80,6 @@ pub enum DomainError {
 
     #[error("insufficient stake for slashing: {available} available, {required} required")]
     InsufficientStake { available: u64, required: u64 },
-
-    #[error("runtime unavailable: {message}")]
-    RuntimeUnavailable { message: String },
 }
 
 // SAFETY: DomainError contains f64 only in InvalidTokenLogProb, and

@@ -6,14 +6,17 @@ from synapse_runtime.auto_assign import calculate_expert_count, detect_vram
 
 
 class TestDetectVram:
-    def test_returns_tuple_of_two_ints(self) -> None:
+    @patch("torch.cuda.is_available", return_value=True)
+    @patch("torch.cuda.mem_get_info", return_value=(8589934592, 17179869184))
+    def test_returns_tuple_of_two_ints(
+        self, mock_mem: object, mock_avail: object
+    ) -> None:
         """detect_vram returns (total_mb, available_mb) as integers."""
         total, available = detect_vram()
         assert isinstance(total, int)
         assert isinstance(available, int)
-        assert total > 0
-        assert available > 0
-        assert available <= total
+        assert total == 16384
+        assert available == 8192
 
     @patch("torch.cuda.is_available", return_value=True)
     @patch("torch.cuda.mem_get_info", return_value=(8589934592, 17179869184))
