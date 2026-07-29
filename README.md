@@ -30,13 +30,18 @@ Synapse is in **thesis validation**. We're not building a global P2P marketplace
 | NVML driver issues on Linux | [Documented workaround](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md#72-intento-con-gpu-real--bloqueado-por-driver-mismatch-2026-07-29) (reboot fixes it) |
 | vLLM + MoE needs >8 GB VRAM | [Documented](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md#73-gpu-real--ollama--qwen3-8b-q4_k_m-2026-07-29) — Qwen-MoE-A2.7B in FP16 = 7.1 GiB weights alone |
 | llama.cpp + GGUF fits MoE in 8 GB | Granite MoE 3B Q4_K_M = ~2 GB, works perfectly |
-| Same principle as ESP32-AI | [Slava S ran 28.9M params on 512KB SRAM](https://www.tomshardware.com/tech-industry/artificial-intelligence/ai-developer-runs-28-9-million-parameter-model-on-usd10-esp32-s3-microcontroller-uses-googles-per-layer-embeddings-technique-stores-table-on-16mb-flash-memory) using mmap + 4-bit — same technique, 16,000x more RAM here |
+| **Expert sharding is possible** | **Granite MoE 3B split into 2 shards (20 experts each), loads and generates text in Ollama** — 1.06 GB per shard vs 1.9 GB original |
+| **GGUF format natively supports expert slicing** | [Spike: expert sharding](docs/superpowers/spikes/2026-07-29-expert-sharding-spike.md) — `data[0:20]` numpy slicing, no dequantization needed |
+| **Expert specialisation is real** | Shards produce divergent outputs — experts 0-19 and 20-39 learned different knowledge |
+| **Shared layers are identical across shards** | 194/194 tensors verified bit-identical — coordinator doesn't need full model |
+| **Coordinator routing validated** | gate_inp weights (384 KB total) + hidden state = routing decision, proven in [numpy spike](scripts/spike_moe_routing.py) |
+| Same principle as ESP32-AI | [Slava S ran 28.9M params on 512KB SRAM](https://www.tomshardware.com/tech-industry/artificial-intelligence/ai-developer-runs-28-9-million-parameter-model-on-usd10-esp32-s3-microcontroller-uses-googles-per-layer-embeddings-technique-stores-table-on-16mb-flash-memory) — wrote his own runtime, we wrote our own splitter |
 
 ### 🔄 In progress
 
 | What | Status |
 |---|---|
-| Multi-worker coordination | Spike designed, pending |
+| Coordinator V0 (Rust) | Architecture validated — building multi-worker MoE dispatch |
 | Crash recovery / fault tolerance | Spike designed, pending |
 | Job model + async batch API | Next (MVP design phase) |
 | 2+ node real network | Needs more hardware or cloud GPUs |

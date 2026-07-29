@@ -31,3 +31,5 @@ Thumbs.db
 .env
 .env.local
 mutants.out/
+.commandcode/
+omp-session-*.html
