@@ -22,7 +22,7 @@ pub trait InferencePort {
     ///
     /// # Errors
     ///
-    /// Returns [`DomainError::InvalidToken`] if the prompt contains invalid tokens.
+    /// Returns [`DomainError::InvalidTokenText`] or [`DomainError::InvalidTokenLogProb`] if the prompt contains invalid tokens.
     /// Returns [`DomainError::StorageError`] if the runtime encounters an error.
     fn generate(&self, request: &InferenceRequest) -> Result<InferenceOutput, DomainError>;
 

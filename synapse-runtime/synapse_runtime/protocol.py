@@ -96,6 +96,11 @@ def _parse_fields(data: bytes) -> dict[int, list[tuple[int, bytes]]]:
             lst.append((wire_type, _encode_varint(value)))
         elif wire_type == _WIRE_LEN:
             length, offset = _decode_varint(data, offset)
+            if offset + length > len(data):
+                raise ValueError(
+                    f"Truncated field {field_number}: declared {length} bytes, "
+                    f"available {len(data) - offset}"
+                )
             payload = data[offset : offset + length]
             offset += length
             fields.setdefault(field_number, []).append((wire_type, payload))
