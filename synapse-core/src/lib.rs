@@ -3,6 +3,7 @@ pub mod economic;
 pub mod gateway;
 pub mod identity;
 pub mod model;
+pub mod runtime;
 pub mod shared;
 pub mod swarm;
 pub mod transport;

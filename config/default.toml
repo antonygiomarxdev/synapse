@@ -33,3 +33,41 @@ api_url = "http://localhost:8000"
 
 # Gateway health check interval (seconds)
 health_check_interval = 30
+
+[runtime]
+# Unix socket path for the Python inference subprocess
+socket_path = "/tmp/synapse-runtime.sock"
+
+# Socket backlog for incoming connections
+socket_backlog = 5
+
+# Socket timeout in seconds for accept loop
+socket_timeout = 0.5
+
+# Read buffer chunk size for recv (bytes)
+recv_chunk_size = 65536
+
+# Number of retry attempts for bridge requests
+max_retries = 3
+
+# Read timeout for bridge socket operations (seconds)
+read_timeout_secs = 30
+
+[vllm]
+# GPU memory utilization fraction (0.0 - 1.0)
+gpu_memory_utilization = 0.90
+
+# Maximum model context length
+max_model_len = 32768
+
+# Default max tokens for generation
+default_max_tokens = 256
+
+# Temperature for deterministic generation (seed=0)
+temperature_deterministic = 0.0
+
+# Default temperature for non-deterministic generation
+temperature_default = 0.7
+
+# Number of logprobs to return
+logprobs_count = 1

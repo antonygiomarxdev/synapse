@@ -35,6 +35,7 @@ fn coordinator_reaches_consensus_with_unanimous_engine() {
         priority: Priority::Realtime,
         swarm: Some(SpecSwarmConfig::new(model, 5).unwrap()),
         max_tokens: 10,
+        prompt_tokens: vec![],
     };
     let result = coordinator.coordinate(&request).unwrap();
     assert_eq!(result.consensus_tokens.len(), 2);
