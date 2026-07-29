@@ -10,7 +10,7 @@ pub const NODE_ID_HEX_LEN: usize = 64;
 /// A [`NodeId`] is a 32-byte hash that uniquely and deterministically
 /// identifies a node in the Synapse swarm. It is derived from the node's
 /// public key and cannot be forged without the corresponding secret key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct NodeId(pub [u8; ED25519_KEY_BYTES]);
 
 impl NodeId {

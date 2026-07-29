@@ -1,5 +1,4 @@
 use crate::shared::DomainError;
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// 4-tier reputation system governing routing priority and slashing risk.
@@ -69,9 +68,8 @@ impl Reputation {
     /// Applies inactivity decay: 1 point per 24 hours, never below 0.
     ///
     /// `hours_inactive` is the number of hours since the node was last
-    /// seen producing valid output. `now` is injected by the caller
-    /// (domain is pure — no `Utc::now()` calls).
-    pub fn apply_decay(self, hours_inactive: u32, _now: DateTime<Utc>) -> Reputation {
+    /// seen producing valid output.
+    pub fn apply_decay(self, hours_inactive: u32) -> Reputation {
         let days = hours_inactive / 24;
         let decay = (days as u16).min(self.0);
         Reputation(self.0 - decay)
@@ -155,32 +153,28 @@ mod tests {
     #[test]
     fn decay_reduces_score_by_one_per_24h() {
         let r = Reputation::new(500).unwrap();
-        let now = chrono::Utc::now();
-        let decayed = r.apply_decay(48, now);
+        let decayed = r.apply_decay(48);
         assert_eq!(decayed.score(), 498);
     }
 
     #[test]
     fn decay_never_goes_below_zero() {
         let r = Reputation::new(1).unwrap();
-        let now = chrono::Utc::now();
-        let decayed = r.apply_decay(1000, now);
+        let decayed = r.apply_decay(1000);
         assert_eq!(decayed.score(), 0);
     }
 
     #[test]
     fn decay_zero_hours_returns_unchanged() {
         let r = Reputation::new(500).unwrap();
-        let now = chrono::Utc::now();
-        let decayed = r.apply_decay(0, now);
+        let decayed = r.apply_decay(0);
         assert_eq!(decayed.score(), 500);
     }
 
     #[test]
     fn decay_on_zero_score_stays_zero() {
         let r = Reputation::new(0).unwrap();
-        let now = chrono::Utc::now();
-        let decayed = r.apply_decay(100, now);
+        let decayed = r.apply_decay(100);
         assert_eq!(decayed.score(), 0);
     }
 }

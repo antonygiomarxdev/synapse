@@ -42,6 +42,11 @@ impl RouteCost {
     }
 
     /// The total cost across all experts in the route.
+    ///
+    /// Constructs [`TokensPerMillion`] directly from the summed internal value.
+    /// This is safe because we are within the same module and `TokensPerMillion`'s
+    /// tuple field is a private same-crate detail — callers must use
+    /// [`TokensPerMillion::new`] for validation.
     pub fn total(&self) -> TokensPerMillion {
         let sum: u64 = self.prices.iter().map(|p| p.0).sum();
         TokensPerMillion(sum)
@@ -51,8 +56,8 @@ impl RouteCost {
 /// Selects the cheapest valid expert route.
 ///
 /// Each expert may offer multiple price points (for different replicas).
-/// This function picks the minimum price for each expert and returns the
-/// sorted expert list with the total cost.
+/// This function picks the minimum price for each expert and returns
+/// experts in input order with the total cost.
 ///
 /// Returns `None` for empty input. Returns `Some` with zero total cost
 /// if all experts have empty price lists (though in practice this should

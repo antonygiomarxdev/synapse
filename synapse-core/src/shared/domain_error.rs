@@ -54,26 +54,6 @@ pub enum DomainError {
     #[error("no consensus reached at token index {token_index}")]
     NoConsensus { token_index: usize },
 
-    /// Node is already in a frozen state until the given timestamp.
-    #[error("node is already frozen until {until}")]
-    NodeAlreadyFrozen { until: String },
-
-    /// Node is already banned from the network.
-    #[error("node is already banned")]
-    NodeAlreadyBanned,
-
-    /// Attempted to slash a node that is currently frozen.
-    #[error("node is currently frozen and cannot be slashed")]
-    NodeFrozen,
-
-    /// Flag count is invalid (must be non-zero).
-    #[error("invalid flag count: {count} (must be non-zero)")]
-    InvalidFlagCount { count: u32 },
-
-    /// Insufficient stake to perform a slashing operation.
-    #[error("insufficient stake for slashing: {available} available, {required} required")]
-    InsufficientStake { available: u64, required: u64 },
-
     #[error("storage error: {message}")]
     StorageError { message: String },
 
@@ -85,6 +65,21 @@ pub enum DomainError {
 
     #[error("catalog load failed: {reason}")]
     CatalogLoadFailed { reason: String },
+
+    #[error("node is already frozen until {until}")]
+    NodeAlreadyFrozen { until: String },
+
+    #[error("node is already banned")]
+    NodeAlreadyBanned,
+
+    #[error("node is currently frozen and cannot be slashed")]
+    NodeFrozen,
+
+    #[error("invalid flag count: {count} (must be non-zero)")]
+    InvalidFlagCount { count: u32 },
+
+    #[error("insufficient stake for slashing: {available} available, {required} required")]
+    InsufficientStake { available: u64, required: u64 },
 }
 
 // SAFETY: DomainError contains f64 only in InvalidTokenLogProb, and
