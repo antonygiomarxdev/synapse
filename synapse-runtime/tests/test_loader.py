@@ -1,5 +1,8 @@
 """Tests for weight loader."""
 
+import hashlib
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -54,3 +57,51 @@ class TestDownloadModel:
         mock_snapshot.side_effect = OSError("disk full")
         with pytest.raises(RuntimeError, match="disk full"):
             download_model("any/model")
+
+
+class TestSha256:
+    def test_compute_sha256_known_content(self) -> None:
+        """SHA256 of known content matches expected hash."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = Path(tmpdir) / "test.bin"
+            filepath.write_bytes(b"synapse test data")
+            from synapse_runtime.loader import compute_sha256
+
+            result = compute_sha256(str(tmpdir))
+            # compute_sha256 hashes each file individually, then feeds
+            # the raw 32-byte SHA256 digest into a combined SHA256.
+            expected = hashlib.sha256(
+                hashlib.sha256(b"synapse test data").digest()
+            ).hexdigest()
+            assert result == expected
+
+    def test_verify_sha256_matches(self) -> None:
+        """verify_sha256 returns True when hash matches."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = Path(tmpdir) / "model.safetensors"
+            filepath.write_bytes(b"weights data")
+            # compute_sha256 uses per-file SHA256 digests fed into
+            # a combined SHA256, so the expected hash must match.
+            expected = hashlib.sha256(
+                hashlib.sha256(b"weights data").digest()
+            ).hexdigest()
+            from synapse_runtime.loader import verify_sha256
+
+            assert verify_sha256(str(tmpdir), expected) is True
+
+    def test_verify_sha256_mismatch(self) -> None:
+        """verify_sha256 returns False when hash doesn't match."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = Path(tmpdir) / "model.safetensors"
+            filepath.write_bytes(b"tampered weights")
+            from synapse_runtime.loader import verify_sha256
+
+            assert verify_sha256(str(tmpdir), "deadbeef") is False
+
+    def test_verify_sha256_empty_directory(self) -> None:
+        """verify_sha256 on empty directory returns False."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            from synapse_runtime.loader import verify_sha256
+
+            # Empty dir: no files to hash -> sha256 of empty string
+            assert verify_sha256(str(tmpdir), "any") is False
