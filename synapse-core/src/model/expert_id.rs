@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// zero-based expert index within that model.
 ///
 /// Example: Expert #3 of Kimi K3 → `ExpertId { model: "kimi-k3", index: 3 }`
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ExpertId {
     pub model: ModelId,
     pub index: u32,

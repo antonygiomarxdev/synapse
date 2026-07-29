@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Model IDs must be non-empty and in kebab-case (lowercase letters,
 /// digits, and hyphens only). Examples: `"kimi-k3"`, `"mixtral-8x7b"`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ModelId(String);
 
 impl ModelId {

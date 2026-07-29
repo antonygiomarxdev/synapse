@@ -65,6 +65,21 @@ pub enum DomainError {
 
     #[error("catalog load failed: {reason}")]
     CatalogLoadFailed { reason: String },
+
+    #[error("node is already frozen until {until}")]
+    NodeAlreadyFrozen { until: String },
+
+    #[error("node is already banned")]
+    NodeAlreadyBanned,
+
+    #[error("node is currently frozen and cannot be slashed")]
+    NodeFrozen,
+
+    #[error("invalid flag count: {count} (must be non-zero)")]
+    InvalidFlagCount { count: u32 },
+
+    #[error("insufficient stake for slashing: {available} available, {required} required")]
+    InsufficientStake { available: u64, required: u64 },
 }
 
 // SAFETY: DomainError contains f64 only in InvalidTokenLogProb, and
@@ -159,5 +174,35 @@ mod tests {
     fn no_consensus_display() {
         let err = DomainError::NoConsensus { token_index: 7 };
         assert_eq!(err.to_string(), "no consensus reached at token index 7");
+    }
+
+    #[test]
+    fn node_already_frozen_display() {
+        let err = DomainError::NodeAlreadyFrozen { until: "2026-08-01T00:00:00Z".into() };
+        assert!(err.to_string().contains("node is already frozen"));
+    }
+
+    #[test]
+    fn node_already_banned_display() {
+        let err = DomainError::NodeAlreadyBanned;
+        assert_eq!(err.to_string(), "node is already banned");
+    }
+
+    #[test]
+    fn node_frozen_display() {
+        let err = DomainError::NodeFrozen;
+        assert_eq!(err.to_string(), "node is currently frozen and cannot be slashed");
+    }
+
+    #[test]
+    fn invalid_flag_count_display() {
+        let err = DomainError::InvalidFlagCount { count: 0 };
+        assert!(err.to_string().contains("invalid flag count"));
+    }
+
+    #[test]
+    fn insufficient_stake_display() {
+        let err = DomainError::InsufficientStake { available: 50, required: 100 };
+        assert_eq!(err.to_string(), "insufficient stake for slashing: 50 available, 100 required");
     }
 }

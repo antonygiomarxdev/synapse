@@ -18,7 +18,7 @@ contract StakeManager {
     /// @notice Miner stake records, keyed by node ID.
     mapping(bytes32 => StakeInfo) public stakes;
     /// @notice Addresses authorized to call admin functions.
-    mapping(bytes32 => bool) public authorizedMiners;
+    mapping(address => bool) public authorized;
 
     /// @notice Minimum stake required to mine. 100 USDC (6 decimals).
     uint256 public constant MIN_STAKE = 100 * 1e6;
@@ -38,11 +38,29 @@ contract StakeManager {
     event Flagged(bytes32 indexed nodeId, uint8 totalFlags);
     event Slashed(bytes32 indexed nodeId, uint256 amount);
     event Frozen(bytes32 indexed nodeId, uint256 until);
+    event Unfrozen(bytes32 indexed nodeId);
     event Banned(bytes32 indexed nodeId);
+    event Unbanned(bytes32 indexed nodeId);
+
+    constructor() {
+        authorized[msg.sender] = true;
+    }
 
     modifier onlyAuthorized() {
-        require(authorizedMiners[bytes32(0)] || msg.sender == address(this), "unauthorized");
+        require(authorized[msg.sender], "unauthorized");
         _;
+    }
+
+    /// Adds an address to the authorized set. Only callable by existing authorized addresses.
+    function addAuthorized(address account) external onlyAuthorized {
+        require(account != address(0), "zero address");
+        authorized[account] = true;
+    }
+
+    /// Removes an address from the authorized set.
+    function removeAuthorized(address account) external onlyAuthorized {
+        require(account != msg.sender, "cannot remove self");
+        authorized[account] = false;
     }
 
     modifier notBanned(bytes32 nodeId) {
@@ -122,5 +140,55 @@ contract StakeManager {
 
     function getStake(bytes32 nodeId) external view returns (uint256) {
         return stakes[nodeId].amount;
+    }
+
+    // --- Standalone freeze/unfreeze ---
+
+    function freeze(bytes32 nodeId, uint256 durationSeconds) external onlyAuthorized notBanned(nodeId) {
+        stakes[nodeId].frozenUntil = block.timestamp + durationSeconds;
+        emit Frozen(nodeId, stakes[nodeId].frozenUntil);
+    }
+
+    function unfreeze(bytes32 nodeId) external onlyAuthorized {
+        stakes[nodeId].frozenUntil = 0;
+        emit Unfrozen(nodeId);
+    }
+
+    // --- Standalone ban/unban ---
+
+    function ban(bytes32 nodeId) external onlyAuthorized {
+        require(!stakes[nodeId].banned, "already banned");
+        stakes[nodeId].banned = true;
+        stakes[nodeId].reputation = 0;
+        stakes[nodeId].flags24h = 0;
+        stakes[nodeId].frozenUntil = 0;
+        emit Banned(nodeId);
+    }
+
+    function unban(bytes32 nodeId) external onlyAuthorized {
+        require(stakes[nodeId].banned, "not banned");
+        stakes[nodeId].banned = false;
+        stakes[nodeId].reputation = 100;
+        stakes[nodeId].flags24h = 0;
+        stakes[nodeId].frozenUntil = 0;
+        emit Unbanned(nodeId);
+    }
+
+    // --- Standalone slash ---
+
+    function slash(bytes32 nodeId, uint256 amount) external onlyAuthorized notBanned(nodeId) notFrozen(nodeId) {
+        require(stakes[nodeId].amount >= amount, "insufficient stake");
+        stakes[nodeId].amount -= amount;
+        emit Slashed(nodeId, amount);
+    }
+
+    // --- View helpers ---
+
+    function isBanned(bytes32 nodeId) external view returns (bool) {
+        return stakes[nodeId].banned;
+    }
+
+    function isFrozen(bytes32 nodeId) external view returns (bool) {
+        return block.timestamp < stakes[nodeId].frozenUntil;
     }
 }
