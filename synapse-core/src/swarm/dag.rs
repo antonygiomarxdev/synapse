@@ -50,13 +50,15 @@ impl DagRoute {
         self.steps.len()
     }
 
-    /// Builds a simple dependency graph where each expert depends on the
-    /// next expert in the route. The final expert has no dependencies.
+    /// Builds a dependency graph where each expert depends on the previous
+    /// expert in the route. The first expert has no dependencies.
+    ///
+    /// Since step N feeds hidden states into step N+1, step N+1 depends on
+    /// the output of step N. The graph edges are: expert[N+1] → expert[N].
     pub fn dependency_graph(&self) -> HashMap<ExpertId, Vec<ExpertId>> {
         let mut graph = HashMap::new();
         for (i, expert) in self.steps.iter().enumerate() {
-            let deps =
-                if i + 1 < self.steps.len() { vec![self.steps[i + 1].clone()] } else { vec![] };
+            let deps = if i > 0 { vec![self.steps[i - 1].clone()] } else { vec![] };
             graph.insert(expert.clone(), deps);
         }
         graph
@@ -101,9 +103,12 @@ mod tests {
     fn dependency_graph_links_consecutive_experts() {
         let route = DagRoute::new(model(), vec![expert(0), expert(3), expert(7)]).unwrap();
         let graph = route.dependency_graph();
-        assert_eq!(graph.get(&expert(0)), Some(&vec![expert(3)]));
-        assert_eq!(graph.get(&expert(3)), Some(&vec![expert(7)]));
-        assert_eq!(graph.get(&expert(7)), Some(&vec![]));
+        // Step 0 has no predecessor
+        assert_eq!(graph.get(&expert(0)), Some(&vec![]));
+        // Step 3 depends on step 0
+        assert_eq!(graph.get(&expert(3)), Some(&vec![expert(0)]));
+        // Step 7 depends on step 3
+        assert_eq!(graph.get(&expert(7)), Some(&vec![expert(3)]));
     }
 
     #[test]
