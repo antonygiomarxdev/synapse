@@ -1,7 +1,7 @@
 //! Protobuf message encoding/decoding for the runtime bridge.
 //!
-//! Hand-coded to avoid build-time protoc dependency.
-//! Uses the `prost` crate for encoding primitives.
+//! Hand-coded to avoid build-time protoc dependency and to stay
+//! dependency-free — no prost or other protobuf crate needed.
 use crate::runtime::protocol::{
     GenerateBridgeRequest, LoadModelRequest, VerifyBridgeRequest, VramBridgeRequest,
 };
@@ -125,7 +125,7 @@ mod tests {
         let data = encode_load_model_request(&req);
         assert!(data.len() > 14); // has the expert indices packed field
     }
-
+    #[test]
     fn encode_generate_req() {
         let req = GenerateBridgeRequest::new(b"rid".to_vec(), vec![1, 2, 3], 0, 100);
         let data = encode_generate_request(&req);
