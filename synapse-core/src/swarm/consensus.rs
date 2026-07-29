@@ -2,7 +2,7 @@ use crate::identity::NodeId;
 use crate::shared::DomainError;
 use crate::swarm::Token;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
 /// Output from a single node for consensus comparison.
@@ -47,7 +47,7 @@ pub fn vote(
     let mut votes_by_token = HashMap::new();
 
     for token_index in 0..max_len {
-        let mut counts: HashMap<String, Vec<NodeId>> = HashMap::new();
+        let mut counts: BTreeMap<String, Vec<NodeId>> = BTreeMap::new();
         for output in node_outputs {
             if let Some(token) = output.tokens.get(token_index) {
                 counts.entry(token.text().to_string()).or_default().push(output.node_id);
