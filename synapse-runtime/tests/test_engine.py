@@ -66,3 +66,67 @@ class TestVllmEngineLoadModel:
 
         assert engine.is_loaded is True
         assert mock_llm_class.call_count == 2
+
+
+class TestVllmEngineGenerate:
+    @patch("vllm.LLM")
+    def test_generate_returns_tokens(self, mock_llm_class: MagicMock) -> None:
+        """generate returns token IDs and logprobs."""
+        from unittest.mock import MagicMock
+
+        # Mock the LLM instance and its generate method
+        mock_llm = MagicMock()
+        mock_output = MagicMock()
+        mock_output.outputs = [
+            MagicMock(token_ids=[42, 43, 44],
+                      logprobs=[-0.1, -0.2, -0.3])
+        ]
+        mock_llm.generate.return_value = [mock_output]
+        mock_llm_class.return_value = mock_llm
+
+        engine = VllmEngine()
+        engine.load_model("/models/test", [0])
+
+        from synapse_runtime.protocol import GenerateResponse
+        resp = engine.generate([1, 2, 3], seed=0, max_tokens=100)
+
+        assert isinstance(resp, GenerateResponse)
+        assert resp.token_ids == [42, 43, 44]
+        assert resp.log_probs == [-0.1, -0.2, -0.3]
+        assert resp.finished is True
+
+    @patch("vllm.LLM")
+    def test_generate_requires_loaded_model(self,
+                                              mock_llm_class: MagicMock) -> None:
+        """generate raises EngineError if no model is loaded."""
+        engine = VllmEngine()
+        with pytest.raises(EngineError, match="No model loaded"):
+            engine.generate([1, 2], seed=0, max_tokens=10)
+
+    @patch("vllm.LLM")
+    def test_generate_empty_prompt_returns_empty(self,
+                                                   mock_llm_class: MagicMock) -> None:
+        """Empty prompt produces empty output."""
+        mock_llm = MagicMock()
+        mock_llm.generate.return_value = []
+        mock_llm_class.return_value = mock_llm
+
+        engine = VllmEngine()
+        engine.load_model("/models/test", [0])
+
+        resp = engine.generate([], seed=0, max_tokens=50)
+        assert resp.token_ids == []
+        assert resp.finished is True
+
+    @patch("vllm.LLM")
+    def test_generate_handles_vllm_error(self, mock_llm_class: MagicMock) -> None:
+        """vLLM generate errors are wrapped in EngineError."""
+        mock_llm = MagicMock()
+        mock_llm.generate.side_effect = RuntimeError("CUDA error")
+        mock_llm_class.return_value = mock_llm
+
+        engine = VllmEngine()
+        engine.load_model("/models/test", [0])
+
+        with pytest.raises(EngineError, match="CUDA error"):
+            engine.generate([1], seed=0, max_tokens=10)

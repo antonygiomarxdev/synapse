@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from synapse_runtime.protocol import GenerateResponse
+
 
 class EngineError(Exception):
     """Raised when the inference engine encounters an error."""
@@ -62,5 +64,75 @@ class VllmEngine:
             )
             self._model_path = model_path
             self._loaded_experts = list(expert_indices)
+        except Exception as e:
+            raise EngineError(str(e)) from e
+
+    def generate(
+        self,
+        prompt_tokens: list[int],
+        seed: int = 0,
+        max_tokens: int = 256,
+    ) -> GenerateResponse:
+        """Generate tokens from a prompt.
+
+        Args:
+            prompt_tokens: Input token IDs.
+            seed: Random seed (0 for deterministic).
+            max_tokens: Maximum tokens to generate.
+
+        Returns:
+            GenerateResponse with token_ids, log_probs, and finished flag.
+
+        Raises:
+            EngineError: If no model is loaded or generation fails.
+        """
+        if not self.is_loaded:
+            raise EngineError("No model loaded. Call load_model() first.")
+
+        if not prompt_tokens:
+            return GenerateResponse(
+                request_id=b"",
+                token_ids=[],
+                log_probs=[],
+                finished=True,
+            )
+
+        try:
+            from vllm import SamplingParams
+
+            sampling_params = SamplingParams(
+                temperature=0.0 if seed == 0 else 0.7,
+                seed=seed,
+                max_tokens=max_tokens,
+                logprobs=1,
+            )
+
+            prompt = {"prompt_token_ids": prompt_tokens}
+            outputs = self._llm.generate([prompt], sampling_params)
+
+            if not outputs:
+                return GenerateResponse(
+                    request_id=b"",
+                    token_ids=[],
+                    log_probs=[],
+                    finished=True,
+                )
+
+            output = outputs[0]
+            token_ids: list[int] = []
+            log_probs: list[float] = []
+
+            for out in output.outputs:
+                token_ids.extend(out.token_ids)
+                if out.logprobs:
+                    log_probs.extend(out.logprobs)
+
+            return GenerateResponse(
+                request_id=b"",
+                token_ids=token_ids,
+                log_probs=log_probs,
+                finished=True,
+            )
+
         except Exception as e:
             raise EngineError(str(e)) from e
