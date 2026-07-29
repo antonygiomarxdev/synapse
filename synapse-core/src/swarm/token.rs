@@ -96,8 +96,35 @@ mod tests {
 
     #[test]
     fn token_rejects_overly_long_text() {
-        let text = "a".repeat(65_537);
+        let text = "a".repeat(MAX_TOKEN_TEXT_LEN + 1);
         let result = Token::new(text, -0.5);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn tokens_with_same_text_and_log_prob_are_equal() {
+        let a = Token::new("hello", -1.0).unwrap();
+        let b = Token::new("hello", -1.0).unwrap();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn tokens_with_different_text_are_not_equal() {
+        let a = Token::new("hello", -1.0).unwrap();
+        let b = Token::new("world", -1.0).unwrap();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn tokens_with_different_log_prob_are_not_equal() {
+        let a = Token::new("hello", -1.0).unwrap();
+        let b = Token::new("hello", -0.5).unwrap();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn token_id_is_non_nil() {
+        let token = Token::new("test", -0.5).unwrap();
+        assert_ne!(token.id(), uuid::Uuid::nil());
     }
 }

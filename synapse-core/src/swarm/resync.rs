@@ -2,6 +2,9 @@ use crate::identity::NodeId;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Seconds in one hour, used for chronic-flag window calculation.
+const SECONDS_PER_HOUR: i64 = 3600;
+
 /// Per-request and chronic divergence tracking.
 ///
 /// Nodes that diverge too often in a single request are expelled.
@@ -66,7 +69,7 @@ impl ReSyncPolicy {
     /// True if the node has crossed the chronic flag threshold
     /// within the `chronic_window_hours` window.
     pub fn is_chronic(&self, node_id: &NodeId, now_epoch_secs: i64) -> bool {
-        let cutoff = now_epoch_secs - (self.chronic_window_hours as i64) * 3600;
+        let cutoff = now_epoch_secs - (self.chronic_window_hours as i64) * SECONDS_PER_HOUR;
         let count = self
             .chronic_flags
             .get(node_id)
@@ -156,14 +159,14 @@ mod tests {
             policy.record_chronic_flag(n, now);
         }
         // 5 flags outside window (2 days ago)
-        let old = now - 48 * 3600;
+        let old = now - 48 * SECONDS_PER_HOUR;
         for _ in 0..5 {
             policy.record_chronic_flag(n, old);
         }
         // Only the 5 recent flags count, which is >= threshold of 5
         assert!(policy.is_chronic(&n, now));
         // But if we look from a later time, the recent ones become old too
-        let later = now + 48 * 3600;
+        let later = now + 48 * SECONDS_PER_HOUR;
         assert!(!policy.is_chronic(&n, later));
     }
 
@@ -177,5 +180,43 @@ mod tests {
         }
         assert!(policy.should_expel(&a));
         assert!(!policy.should_expel(&b));
+    }
+
+    #[test]
+    fn accessors_reflect_configured_values() {
+        let policy = ReSyncPolicy::new(5, 7, 15, 48);
+        assert_eq!(policy.divergence_limit(), 5);
+        assert_eq!(policy.expulsion_limit(), 7);
+        assert_eq!(policy.chronic_flag_threshold(), 15);
+        assert_eq!(policy.chronic_window_hours(), 48);
+    }
+
+    #[test]
+    fn is_chronic_at_exact_threshold() {
+        let mut policy = ReSyncPolicy::new(3, 3, 5, 24);
+        let n = node(1);
+        let now = 1_000_000_000i64;
+        for _ in 0..5 {
+            policy.record_chronic_flag(n, now);
+        }
+        assert!(policy.is_chronic(&n, now));
+        // The 5 flags at `now` remain, even after resetting request divergences
+        assert_eq!(policy.chronic_window_hours(), 24);
+        assert!(policy.is_chronic(&n, now));
+    }
+
+    #[test]
+    fn is_chronic_uses_strict_greater_than_cutoff() {
+        let mut policy = ReSyncPolicy::new(3, 3, 3, 24);
+        let n = node(1);
+        let now = 1_000_000_000i64;
+        let cutoff = now - 24 * SECONDS_PER_HOUR;
+        // 2 flags inside the window
+        policy.record_chronic_flag(n, now);
+        policy.record_chronic_flag(n, now);
+        // 1 flag exactly at the cutoff boundary
+        policy.record_chronic_flag(n, cutoff);
+        // threshold is 3, but only 2 flags are > cutoff, so NOT chronic
+        assert!(!policy.is_chronic(&n, now));
     }
 }

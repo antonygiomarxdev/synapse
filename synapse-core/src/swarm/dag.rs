@@ -45,13 +45,9 @@ impl DagRoute {
     }
 
     /// Number of expert activations.
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.steps.len()
-    }
-
-    /// True if the route has no steps.
-    pub fn is_empty(&self) -> bool {
-        self.steps.is_empty()
     }
 
     /// Builds a simple dependency graph where each expert depends on the
@@ -108,5 +104,12 @@ mod tests {
         assert_eq!(graph.get(&expert(0)), Some(&vec![expert(3)]));
         assert_eq!(graph.get(&expert(3)), Some(&vec![expert(7)]));
         assert_eq!(graph.get(&expert(7)), Some(&vec![]));
+    }
+
+    #[test]
+    fn steps_returns_configured_steps() {
+        let route = DagRoute::new(model(), vec![expert(0), expert(3)]).unwrap();
+        assert_eq!(route.steps().len(), 2);
+        assert_eq!(route.steps()[0], expert(0));
     }
 }

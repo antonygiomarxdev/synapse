@@ -226,4 +226,65 @@ mod tests {
     fn any_token_strategy() -> impl Strategy<Value = Token> {
         "[a-zA-Z0-9]{0,32}".prop_map(|text| Token::new(text, -1.0).unwrap())
     }
+
+    #[test]
+    fn vote_with_exact_quorum_succeeds() {
+        let outputs: Vec<NodeOutput> =
+            (1..=3).map(|i| NodeOutput { node_id: node(i), tokens: vec![token("same")] }).collect();
+        let result = vote(Uuid::new_v4(), &outputs, 3).unwrap();
+        assert_eq!(result.consensus_tokens[0].text(), "same");
+    }
+
+    #[test]
+    fn vote_counts_votes_by_token_text() {
+        // 3 nodes: two say "yes", one says "no"
+        let outputs = vec![
+            NodeOutput { node_id: node(1), tokens: vec![token("yes"), token("yes")] },
+            NodeOutput { node_id: node(2), tokens: vec![token("yes"), token("no")] },
+            NodeOutput { node_id: node(3), tokens: vec![token("yes"), token("yes")] },
+        ];
+        let result = vote(Uuid::new_v4(), &outputs, 2).unwrap();
+        assert_eq!(result.consensus_tokens.len(), 2);
+        assert_eq!(result.consensus_tokens[0].text(), "yes");
+        assert_eq!(result.consensus_tokens[1].text(), "yes");
+        // "yes" wins both positions
+        assert!(result.votes_by_token.get("no").copied().unwrap_or(0) < 2);
+        assert!(
+            result.votes_by_token.get("yes").copied().unwrap_or(0) > 0,
+            "votes_by_token should track counts"
+        );
+    }
+
+    #[test]
+    fn consensus_uses_correct_canonical_node() {
+        let outputs = vec![
+            NodeOutput { node_id: node(1), tokens: vec![token("alpha")] },
+            NodeOutput { node_id: node(2), tokens: vec![token("alpha")] },
+            NodeOutput { node_id: node(3), tokens: vec![token("beta")] },
+        ];
+        let result = vote(Uuid::new_v4(), &outputs, 2).unwrap();
+        assert_eq!(result.consensus_tokens[0].text(), "alpha");
+        assert!(result.divergent_nodes.contains(&node(3)));
+        assert!(!result.divergent_nodes.contains(&node(1)));
+    }
+
+    #[test]
+    fn audit_rejects_negative_tolerance() {
+        let a = Token::new("x", -1.0).unwrap();
+        assert!(!audit(&[a.clone()], &[a], -0.1));
+    }
+
+    #[test]
+    fn tie_uses_lexicographic_ordering() {
+        // 4 nodes: 2 say "beta", 2 say "alpha" -> tie
+        let outputs = vec![
+            NodeOutput { node_id: node(1), tokens: vec![token("beta")] },
+            NodeOutput { node_id: node(2), tokens: vec![token("beta")] },
+            NodeOutput { node_id: node(3), tokens: vec![token("alpha")] },
+            NodeOutput { node_id: node(4), tokens: vec![token("alpha")] },
+        ];
+        let result = vote(Uuid::new_v4(), &outputs, 2).unwrap();
+        // Deterministic: "alpha" < "beta" -> alpha wins
+        assert_eq!(result.consensus_tokens[0].text(), "alpha");
+    }
 }

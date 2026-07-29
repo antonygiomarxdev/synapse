@@ -99,4 +99,10 @@ mod tests {
         let config = SpecSwarmConfig::new(model(), 3).unwrap();
         assert_eq!(config.quorum(), 2);
     }
+
+    #[test]
+    fn swarm_size_returns_configured_value() {
+        let config = SpecSwarmConfig::new(model(), 5).unwrap();
+        assert_eq!(config.swarm_size(), 5);
+    }
 }
