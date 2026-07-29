@@ -32,3 +32,4 @@ Thumbs.db
 .env.local
 mutants.out/
 mutants.out.old/
+.superpowers/

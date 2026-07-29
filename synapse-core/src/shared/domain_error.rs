@@ -4,7 +4,7 @@ use thiserror::Error;
 ///
 /// Every domain operation that can fail returns a [`DomainError`].
 /// Infrastructure adapters translate these into their own error types.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum DomainError {
     #[error("invalid NodeId: {reason}")]
     InvalidNodeId { reason: String },
@@ -42,8 +42,17 @@ pub enum DomainError {
     #[error("invalid price: {reason}")]
     InvalidPrice { reason: String },
 
-    #[error("invalid token: {reason}")]
-    InvalidToken { reason: String },
+    #[error("invalid token log_prob: {value} (must be finite)")]
+    InvalidTokenLogProb { value: f64 },
+
+    #[error("invalid token text: {reason}")]
+    InvalidTokenText { reason: String },
+
+    #[error("invalid consensus quorum: {quorum} for swarm_size {swarm_size}")]
+    InvalidConsensusQuorum { quorum: usize, swarm_size: usize },
+
+    #[error("no consensus reached at token index {token_index}")]
+    NoConsensus { token_index: usize },
 
     #[error("storage error: {message}")]
     StorageError { message: String },
@@ -51,9 +60,17 @@ pub enum DomainError {
     #[error("signature verification failed")]
     SignatureVerificationFailed,
 
+    #[error("invalid route: {reason}")]
+    InvalidRoute { reason: String },
+
     #[error("catalog load failed: {reason}")]
     CatalogLoadFailed { reason: String },
 }
+
+// SAFETY: DomainError contains f64 only in InvalidTokenLogProb, and
+// Token::new() rejects non-finite values, so Eq is sound despite the
+// derived PartialEq on f64 (NaN comparisons can never occur).
+impl Eq for DomainError {}
 
 #[cfg(test)]
 mod tests {
@@ -113,5 +130,34 @@ mod tests {
         let a = DomainError::InvalidNodeId { reason: "bad".into() };
         let b = DomainError::ModelNotFound { model_id: "x".into() };
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn invalid_token_log_prob_display() {
+        let err = DomainError::InvalidTokenLogProb { value: f64::NAN };
+        assert_eq!(err.to_string(), "invalid token log_prob: NaN (must be finite)");
+    }
+
+    #[test]
+    fn invalid_token_text_display() {
+        let err = DomainError::InvalidTokenText { reason: "too long".into() };
+        assert_eq!(err.to_string(), "invalid token text: too long");
+    }
+    #[test]
+    fn invalid_route_display() {
+        let err = DomainError::InvalidRoute { reason: "empty steps".into() };
+        assert_eq!(err.to_string(), "invalid route: empty steps");
+    }
+
+    #[test]
+    fn invalid_consensus_quorum_display() {
+        let err = DomainError::InvalidConsensusQuorum { quorum: 0, swarm_size: 5 };
+        assert_eq!(err.to_string(), "invalid consensus quorum: 0 for swarm_size 5");
+    }
+
+    #[test]
+    fn no_consensus_display() {
+        let err = DomainError::NoConsensus { token_index: 7 };
+        assert_eq!(err.to_string(), "no consensus reached at token index 7");
     }
 }

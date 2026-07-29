@@ -1,1 +1,120 @@
-// TODO
+use crate::model::{ExpertId, ModelId};
+use crate::shared::DomainError;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// A directed path through the expert graph for a single request.
+///
+/// Each step activates one expert. The path is ordered: step N feeds
+/// hidden states into step N+1.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DagRoute {
+    model: ModelId,
+    steps: Vec<ExpertId>,
+}
+
+impl DagRoute {
+    /// Creates a DAG route.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DomainError::InvalidRoute`] if the route is empty or
+    /// if steps belong to different models.
+    pub fn new(model: ModelId, steps: Vec<ExpertId>) -> Result<Self, DomainError> {
+        if steps.is_empty() {
+            return Err(DomainError::InvalidRoute {
+                reason: "route must contain at least one expert step".into(),
+            });
+        }
+        if steps.iter().any(|e| e.model != model) {
+            return Err(DomainError::InvalidRoute {
+                reason: "all route steps must belong to the same model".into(),
+            });
+        }
+        Ok(Self { model, steps })
+    }
+
+    /// The model this route executes.
+    pub fn model(&self) -> &ModelId {
+        &self.model
+    }
+
+    /// Ordered expert steps.
+    pub fn steps(&self) -> &[ExpertId] {
+        &self.steps
+    }
+
+    /// Number of expert activations.
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.steps.len()
+    }
+
+    /// Builds a dependency graph where each expert depends on the previous
+    /// expert in the route. The first expert has no dependencies.
+    ///
+    /// Since step N feeds hidden states into step N+1, step N+1 depends on
+    /// the output of step N. The graph edges are: expert[N+1] → expert[N].
+    pub fn dependency_graph(&self) -> HashMap<ExpertId, Vec<ExpertId>> {
+        let mut graph = HashMap::new();
+        for (i, expert) in self.steps.iter().enumerate() {
+            let deps = if i > 0 { vec![self.steps[i - 1].clone()] } else { vec![] };
+            graph.insert(expert.clone(), deps);
+        }
+        graph
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{ExpertId, ModelId};
+
+    fn model() -> ModelId {
+        ModelId::new("mixtral-8x7b").unwrap()
+    }
+
+    fn expert(index: u32) -> ExpertId {
+        ExpertId::new(model(), index, 8).unwrap()
+    }
+
+    #[test]
+    fn route_rejects_empty_steps() {
+        let result = DagRoute::new(model(), vec![]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn route_rejects_mixed_models() {
+        let kimi = ModelId::new("kimi-k3").unwrap();
+        let steps = vec![expert(0), ExpertId::new(kimi, 1, 896).unwrap()];
+        let result = DagRoute::new(model(), steps);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn valid_route_has_steps() {
+        let route = DagRoute::new(model(), vec![expert(0), expert(3), expert(7)]).unwrap();
+        assert_eq!(route.len(), 3);
+        assert_eq!(route.model().as_str(), "mixtral-8x7b");
+    }
+
+    #[test]
+    fn dependency_graph_links_consecutive_experts() {
+        let route = DagRoute::new(model(), vec![expert(0), expert(3), expert(7)]).unwrap();
+        let graph = route.dependency_graph();
+        // Step 0 has no predecessor
+        assert_eq!(graph.get(&expert(0)), Some(&vec![]));
+        // Step 3 depends on step 0
+        assert_eq!(graph.get(&expert(3)), Some(&vec![expert(0)]));
+        // Step 7 depends on step 3
+        assert_eq!(graph.get(&expert(7)), Some(&vec![expert(3)]));
+    }
+
+    #[test]
+    fn steps_returns_configured_steps() {
+        let route = DagRoute::new(model(), vec![expert(0), expert(3)]).unwrap();
+        assert_eq!(route.steps().len(), 2);
+        assert_eq!(route.steps()[0], expert(0));
+    }
+}
