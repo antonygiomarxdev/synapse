@@ -41,4 +41,7 @@ fn coordinator_reaches_consensus_with_unanimous_engine() {
     assert_eq!(result.consensus_tokens[0].text(), "def");
     assert_eq!(result.consensus_tokens[1].text(), " fibo");
     assert!(result.divergent_nodes.is_empty());
+    let outputs = coordinator.node_outputs();
+    assert_eq!(outputs.len(), 5, "node_outputs should contain 5 per-node results");
+    assert_eq!(outputs[0].tokens[0].text(), "def");
 }

@@ -73,6 +73,11 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().to_string(), "invalid token log_prob: NaN (must be finite)");
     }
+    #[test]
+    fn non_empty_token_is_not_empty() {
+        let token = Token::new("hello", -1.0).unwrap();
+        assert!(!token.is_empty());
+    }
 
     #[test]
     fn token_rejects_infinite_log_prob() {
