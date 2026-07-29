@@ -10,6 +10,17 @@ from typing import Any
 
 from synapse_runtime.protocol import GenerateResponse
 
+# GPU memory utilization target (fraction of VRAM)
+GPU_MEMORY_UTILIZATION = 0.90
+# Maximum model context length
+MAX_MODEL_LEN = 32768
+# Default max tokens for generation
+DEFAULT_MAX_TOKENS = 256
+# Sampling defaults
+TEMPERATURE_DETERMINISTIC = 0.0
+TEMPERATURE_DEFAULT = 0.7
+LOGPROBS_COUNT = 1
+
 
 class EngineError(Exception):
     """Raised when the inference engine encounters an error."""
@@ -59,19 +70,19 @@ class VllmEngine:
             self._llm = LLM(
                 model=model_path,
                 seed=seed,
-                gpu_memory_utilization=0.90,
-                max_model_len=32768,
+                gpu_memory_utilization=GPU_MEMORY_UTILIZATION,
+                max_model_len=MAX_MODEL_LEN,
             )
             self._model_path = model_path
             self._loaded_experts = list(expert_indices)
-        except Exception as e:
+        except (RuntimeError, ValueError) as e:
             raise EngineError(str(e)) from e
 
     def generate(
         self,
         prompt_tokens: list[int],
         seed: int = 0,
-        max_tokens: int = 256,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> GenerateResponse:
         """Generate tokens from a prompt.
 
@@ -101,10 +112,12 @@ class VllmEngine:
             from vllm import SamplingParams
 
             sampling_params = SamplingParams(
-                temperature=0.0 if seed == 0 else 0.7,
+                temperature=(
+                    TEMPERATURE_DETERMINISTIC if seed == 0 else TEMPERATURE_DEFAULT
+                ),
                 seed=seed,
                 max_tokens=max_tokens,
-                logprobs=1,
+                logprobs=LOGPROBS_COUNT,
             )
 
             prompt = {"prompt_token_ids": prompt_tokens}
@@ -144,5 +157,5 @@ class VllmEngine:
                 finished=True,
             )
 
-        except Exception as e:
+        except (RuntimeError, ValueError, TypeError) as e:
             raise EngineError(str(e)) from e

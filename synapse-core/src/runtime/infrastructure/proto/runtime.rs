@@ -221,37 +221,23 @@ fn parse_message(data: &[u8]) -> Result<ParsedFields<'_>, String> {
 }
 
 /// Decode a `LoadModelResponse` from protobuf bytes.
-pub fn decode_load_model_response(data: &[u8]) -> LoadModelResponse {
-    if let Ok(fields) = parse_message(data) {
-        return LoadModelResponse {
-            success: decode_bool(&fields, 1, false),
-            error: decode_string_field(&fields, 2, ""),
-            loaded_experts: decode_uint32(&fields, 3, 0),
-        };
-    }
-    LoadModelResponse {
-        success: false,
-        error: "Failed to parse response".into(),
-        loaded_experts: 0,
-    }
+pub fn decode_load_model_response(data: &[u8]) -> Result<LoadModelResponse, String> {
+    let fields = parse_message(data)?;
+    Ok(LoadModelResponse {
+        success: decode_bool(&fields, 1, false),
+        error: decode_string_field(&fields, 2, ""),
+        loaded_experts: decode_uint32(&fields, 3, 0),
+    })
 }
-
 /// Decode a `GenerateBridgeResponse` from protobuf bytes.
-pub fn decode_generate_response(data: &[u8]) -> GenerateBridgeResponse {
-    if let Ok(fields) = parse_message(data) {
-        return GenerateBridgeResponse {
-            request_id: decode_bytes_field(&fields, 1),
-            token_ids: decode_repeated_uint32(&fields, 2),
-            log_probs: decode_repeated_float(&fields, 3),
-            finished: decode_bool(&fields, 4, false),
-        };
-    }
-    GenerateBridgeResponse {
-        request_id: vec![],
-        token_ids: vec![],
-        log_probs: vec![],
-        finished: false,
-    }
+pub fn decode_generate_response(data: &[u8]) -> Result<GenerateBridgeResponse, String> {
+    let fields = parse_message(data)?;
+    Ok(GenerateBridgeResponse {
+        request_id: decode_bytes_field(&fields, 1),
+        token_ids: decode_repeated_uint32(&fields, 2),
+        log_probs: decode_repeated_float(&fields, 3),
+        finished: decode_bool(&fields, 4, false),
+    })
 }
 
 fn decode_bytes_field(fields: &ParsedFields, field_num: u32) -> Vec<u8> {
@@ -262,27 +248,22 @@ fn decode_bytes_field(fields: &ParsedFields, field_num: u32) -> Vec<u8> {
     }
     vec![]
 }
-
 /// Decode a `VerifyBridgeResponse` from protobuf bytes.
-pub fn decode_verify_response(data: &[u8]) -> VerifyBridgeResponse {
-    if let Ok(fields) = parse_message(data) {
-        return VerifyBridgeResponse {
-            matches: decode_bool(&fields, 1, false),
-            actual_sha256: decode_string_field(&fields, 2, ""),
-        };
-    }
-    VerifyBridgeResponse { matches: false, actual_sha256: "Failed to parse response".into() }
+pub fn decode_verify_response(data: &[u8]) -> Result<VerifyBridgeResponse, String> {
+    let fields = parse_message(data)?;
+    Ok(VerifyBridgeResponse {
+        matches: decode_bool(&fields, 1, false),
+        actual_sha256: decode_string_field(&fields, 2, ""),
+    })
 }
 
 /// Decode a `VramBridgeResponse` from protobuf bytes.
-pub fn decode_vram_response(data: &[u8]) -> VramBridgeResponse {
-    if let Ok(fields) = parse_message(data) {
-        return VramBridgeResponse {
-            total_mb: decode_uint32(&fields, 1, 0),
-            available_mb: decode_uint32(&fields, 2, 0),
-        };
-    }
-    VramBridgeResponse { total_mb: 0, available_mb: 0 }
+pub fn decode_vram_response(data: &[u8]) -> Result<VramBridgeResponse, String> {
+    let fields = parse_message(data)?;
+    Ok(VramBridgeResponse {
+        total_mb: decode_uint32(&fields, 1, 0),
+        available_mb: decode_uint32(&fields, 2, 0),
+    })
 }
 
 #[cfg(test)]
@@ -291,10 +272,9 @@ mod decode_tests {
 
     #[test]
     fn decode_load_model_response_ok() {
-        // Encode a success response manually
         let resp = LoadModelResponse::ok(3);
         let encoded = encode_load_model_response_for_test(&resp);
-        let decoded = decode_load_model_response(&encoded);
+        let decoded = decode_load_model_response(&encoded).unwrap();
         assert!(decoded.success);
         assert_eq!(decoded.loaded_experts, 3);
     }
@@ -303,7 +283,7 @@ mod decode_tests {
     fn decode_load_model_response_err() {
         let resp = LoadModelResponse::err("OOM");
         let encoded = encode_load_model_response_for_test(&resp);
-        let decoded = decode_load_model_response(&encoded);
+        let decoded = decode_load_model_response(&encoded).unwrap();
         assert!(!decoded.success);
         assert_eq!(decoded.error, "OOM");
     }
@@ -313,7 +293,7 @@ mod decode_tests {
         let resp =
             GenerateBridgeResponse::new(b"r1".to_vec(), vec![7, 8, 9], vec![-0.1, -0.2], true);
         let encoded = encode_generate_response_for_test(&resp);
-        let decoded = decode_generate_response(&encoded);
+        let decoded = decode_generate_response(&encoded).unwrap();
         assert_eq!(decoded.token_ids, vec![7, 8, 9]);
         assert_eq!(decoded.log_probs.len(), 2);
         assert!(decoded.finished);
@@ -323,7 +303,7 @@ mod decode_tests {
     fn test_decode_vram_response() {
         let resp = VramBridgeResponse::new(16384, 8192);
         let encoded = encode_vram_response_for_test(&resp);
-        let decoded = super::decode_vram_response(&encoded);
+        let decoded = super::decode_vram_response(&encoded).unwrap();
         assert_eq!(decoded.total_mb, 16384);
         assert_eq!(decoded.available_mb, 8192);
     }

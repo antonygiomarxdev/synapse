@@ -38,6 +38,10 @@ MODEL_REPO_MAP: dict[str, str] = {
     "qwen2.5-moe": "Qwen/Qwen2.5-57B-A14B",
 }
 
+SOCKET_BACKLOG = 5
+SOCKET_TIMEOUT = 0.5  # seconds
+RECV_CHUNK_SIZE = 65536
+
 
 def _resolve_socket_path(socket_path: str) -> str:
     """Resolve and validate a socket path, preventing path traversal.
@@ -51,9 +55,10 @@ def _resolve_socket_path(socket_path: str) -> str:
     Raises:
         ValueError: If the path contains traversal components.
     """
-    resolved = os.path.realpath(socket_path)
+    resolved = os.path.normpath(socket_path)
     if ".." in resolved.split(os.sep):
         raise ValueError(f"Path traversal denied in socket path: {socket_path}")
+    resolved = os.path.realpath(resolved)
     return resolved
 
 
@@ -100,8 +105,8 @@ class RuntimeServer:
         self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             self._socket.bind(resolved)
-            self._socket.listen(5)
-            self._socket.settimeout(0.5)
+            self._socket.listen(SOCKET_BACKLOG)
+            self._socket.settimeout(SOCKET_TIMEOUT)
             self._running = True
 
             self._thread = threading.Thread(
@@ -137,13 +142,19 @@ class RuntimeServer:
             Protobuf-encoded response bytes.
 
         Raises:
-            ValueError: If the request cannot be deserialized or is unknown.
+            ValueError: If the request type is unknown.
         """
         try:
             request = deserialize_request(data)
         except ValueError as e:
             logger.error("Failed to deserialize request: %s", e)
-            raise
+            resp = GenerateResponse(
+                request_id=f"ERROR:deserialize:{e}".encode(),
+                token_ids=[],
+                log_probs=[],
+                finished=True,
+            )
+            return serialize_response(resp)
 
         match request:
             case LoadModelRequest():
@@ -180,7 +191,7 @@ class RuntimeServer:
         if not self._engine.is_loaded:
             logger.error("Generate request received but engine is not loaded")
             resp = GenerateResponse(
-                request_id=req.request_id,
+                request_id=b"ERROR:engine_not_loaded",
                 token_ids=[],
                 log_probs=[],
                 finished=True,
@@ -195,7 +206,7 @@ class RuntimeServer:
         except EngineError as e:
             logger.error("Generate failed: %s", e)
             resp = GenerateResponse(
-                request_id=req.request_id,
+                request_id=f"ERROR:{e}".encode(),
                 token_ids=[],
                 log_probs=[],
                 finished=True,
@@ -204,7 +215,7 @@ class RuntimeServer:
         except Exception:
             logger.exception("Generate failed unexpectedly")
             resp = GenerateResponse(
-                request_id=req.request_id,
+                request_id=b"ERROR:unexpected_exception",
                 token_ids=[],
                 log_probs=[],
                 finished=True,
@@ -213,13 +224,13 @@ class RuntimeServer:
 
     def _handle_verify_hash(self, req: VerifyHashRequest) -> bytes:
         """Handle VerifyHashRequest."""
-        from synapse_runtime.loader import compute_sha256, verify_sha256
+        from synapse_runtime.loader import compute_sha256
 
         hf_repo = MODEL_REPO_MAP.get(req.model_id, req.model_id)
         try:
             model_path = download_model(hf_repo)
-            matches = verify_sha256(model_path, req.expected_sha256)
             actual = compute_sha256(model_path)
+            matches = actual == req.expected_sha256
             resp = VerifyHashResponse(matches=matches, actual_sha256=actual)
         except ModelNotFoundError as e:
             resp = VerifyHashResponse(matches=False, actual_sha256=f"error: {e}")
@@ -256,28 +267,38 @@ class RuntimeServer:
     def _handle_connection(self, conn: socket.socket) -> None:
         """Handle a single client connection."""
         try:
-            with conn:
-                # Read length-prefixed message:
-                # 4-byte big-endian length + payload
-                length_data = bytearray()
-                while len(length_data) < 4:
-                    chunk = conn.recv(4 - len(length_data))
-                    if not chunk:
-                        return
-                    length_data.extend(chunk)
-                msg_len = int.from_bytes(length_data, "big")
+            # Read length-prefixed message:
+            # 4-byte big-endian length + payload
+            length_data = bytearray()
+            while len(length_data) < 4:
+                chunk = conn.recv(4 - len(length_data))
+                if not chunk:
+                    return
+                length_data.extend(chunk)
+            msg_len = int.from_bytes(length_data, "big")
 
-                data = bytearray()
-                while len(data) < msg_len:
-                    chunk = conn.recv(min(msg_len - len(data), 65536))
-                    if not chunk:
-                        break
-                    data.extend(chunk)
+            data = bytearray()
+            while len(data) < msg_len:
+                chunk = conn.recv(min(msg_len - len(data), RECV_CHUNK_SIZE))
+                if not chunk:
+                    break
+                data.extend(chunk)
 
-                if len(data) == msg_len:
-                    response = self.handle_request(bytes(data))
-                    # Write length-prefixed response
-                    conn.sendall(len(response).to_bytes(4, "big"))
-                    conn.sendall(response)
+            if len(data) == msg_len:
+                response = self.handle_request(bytes(data))
+                # Write length-prefixed response
+                conn.sendall(len(response).to_bytes(4, "big"))
+                conn.sendall(response)
         except (OSError, ValueError) as e:
             logger.debug("Connection error: %s", e)
+            # Send a minimal error frame so the client doesn't block
+            error_resp = (
+                b"\x04" + b"\x00\x00\x00\x00"  # type 4 = GenerateResponse, no fields
+            )
+            try:
+                conn.sendall(len(error_resp).to_bytes(4, "big"))
+                conn.sendall(error_resp)
+            except OSError:
+                pass
+        finally:
+            conn.close()

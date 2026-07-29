@@ -47,12 +47,16 @@ class TestVerifyDeterminism:
         # Same output both times
         mock_engine.generate.side_effect = [
             GenerateResponse(
-                request_id=b"r1", token_ids=[1, 2, 3],
-                log_probs=[-0.1, -0.2, -0.3], finished=True
+                request_id=b"r1",
+                token_ids=[1, 2, 3],
+                log_probs=[-0.1, -0.2, -0.3],
+                finished=True,
             ),
             GenerateResponse(
-                request_id=b"r1", token_ids=[1, 2, 3],
-                log_probs=[-0.1, -0.2, -0.3], finished=True
+                request_id=b"r1",
+                token_ids=[1, 2, 3],
+                log_probs=[-0.1, -0.2, -0.3],
+                finished=True,
             ),
         ]
 
@@ -71,12 +75,16 @@ class TestVerifyDeterminism:
 
         mock_engine.generate.side_effect = [
             GenerateResponse(
-                request_id=b"r1", token_ids=[1, 2, 3],
-                log_probs=[-0.1, -0.2, -0.3], finished=True
+                request_id=b"r1",
+                token_ids=[1, 2, 3],
+                log_probs=[-0.1, -0.2, -0.3],
+                finished=True,
             ),
             GenerateResponse(
-                request_id=b"r1", token_ids=[1, 99, 3],  # Divergent!
-                log_probs=[-0.1, -0.9, -0.3], finished=True
+                request_id=b"r1",
+                token_ids=[1, 99, 3],  # Divergent!
+                log_probs=[-0.1, -0.9, -0.3],
+                finished=True,
             ),
         ]
 
@@ -95,12 +103,16 @@ class TestVerifyDeterminism:
 
         mock_engine.generate.side_effect = [
             GenerateResponse(
-                request_id=b"r1", token_ids=[1, 2],
-                log_probs=[-0.1, -0.2], finished=True
+                request_id=b"r1",
+                token_ids=[1, 2],
+                log_probs=[-0.1, -0.2],
+                finished=True,
             ),
             GenerateResponse(
-                request_id=b"r1", token_ids=[1, 2],
-                log_probs=[-0.1, -0.999], finished=True  # Different logprob
+                request_id=b"r1",
+                token_ids=[1, 2],
+                log_probs=[-0.1, -0.999],
+                finished=True,  # Different logprob
             ),
         ]
 

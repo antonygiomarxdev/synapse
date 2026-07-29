@@ -12,6 +12,9 @@ use crate::swarm::token::Token;
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
+/// Read timeout in seconds for the Unix socket.
+const READ_TIMEOUT_SECS: u64 = 30;
+
 /// Bridge to a Python vLLM subprocess over a Unix domain socket.
 pub struct UnixSocketBridge {
     socket_path: String,
@@ -52,7 +55,7 @@ impl UnixSocketBridge {
     fn try_send(socket_path: &str, request_data: &[u8]) -> Result<Vec<u8>, String> {
         let mut stream = UnixStream::connect(socket_path).map_err(|e| format!("connect: {e}"))?;
         stream
-            .set_read_timeout(Some(std::time::Duration::from_secs(30)))
+            .set_read_timeout(Some(std::time::Duration::from_secs(READ_TIMEOUT_SECS)))
             .map_err(|e| format!("set timeout: {e}"))?;
 
         let len_bytes = (request_data.len() as u32).to_be_bytes();
@@ -83,7 +86,8 @@ impl InferencePort for UnixSocketBridge {
         let resp_data = self.send_request(&framed)?;
         let actual_data = if resp_data.len() > 1 { &resp_data[1..] } else { &resp_data };
         let resp =
-            crate::runtime::infrastructure::proto::runtime::decode_load_model_response(actual_data);
+            crate::runtime::infrastructure::proto::runtime::decode_load_model_response(actual_data)
+                .map_err(|e| DomainError::StorageError { message: e })?;
 
         if resp.success { Ok(()) } else { Err(DomainError::StorageError { message: resp.error }) }
     }
@@ -91,7 +95,7 @@ impl InferencePort for UnixSocketBridge {
     fn generate(&self, request: &InferenceRequest) -> Result<InferenceOutput, DomainError> {
         let bridge_req = crate::runtime::protocol::GenerateBridgeRequest::new(
             request.id.as_bytes().to_vec(),
-            vec![], // token_ids populated by tokenizer in full impl
+            request.prompt_tokens.clone(),
             request.max_tokens,
             0,
         );
@@ -100,11 +104,16 @@ impl InferencePort for UnixSocketBridge {
 
         let mut framed = vec![3u8];
         framed.extend_from_slice(&req_data);
-
         let resp_data = self.send_request(&framed)?;
         let actual_data = if resp_data.len() > 1 { &resp_data[1..] } else { &resp_data };
         let resp =
-            crate::runtime::infrastructure::proto::runtime::decode_generate_response(actual_data);
+            crate::runtime::infrastructure::proto::runtime::decode_generate_response(actual_data)
+                .map_err(|e| DomainError::StorageError { message: e })?;
+
+        if resp.request_id.starts_with(b"ERROR:") {
+            let msg = String::from_utf8_lossy(&resp.request_id[6..]);
+            return Err(DomainError::StorageError { message: msg.to_string() });
+        }
 
         if resp.token_ids.len() != resp.log_probs.len() {
             return Err(DomainError::InvalidTokenText {
@@ -120,6 +129,8 @@ impl InferencePort for UnixSocketBridge {
             .token_ids
             .iter()
             .zip(resp.log_probs.iter())
+            // TEMPORARY: tid.to_string() is a numeric placeholder until
+            // the tokenizer integration provides the actual token text.
             .map(|(&tid, &lp)| Token::new(tid.to_string(), lp as f64))
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -139,7 +150,8 @@ impl InferencePort for UnixSocketBridge {
         let resp_data = self.send_request(&framed)?;
         let actual_data = if resp_data.len() > 1 { &resp_data[1..] } else { &resp_data };
         let resp =
-            crate::runtime::infrastructure::proto::runtime::decode_verify_response(actual_data);
+            crate::runtime::infrastructure::proto::runtime::decode_verify_response(actual_data)
+                .map_err(|e| DomainError::StorageError { message: e })?;
 
         Ok(resp.matches)
     }
@@ -154,7 +166,8 @@ impl InferencePort for UnixSocketBridge {
         let resp_data = self.send_request(&framed)?;
         let actual_data = if resp_data.len() > 1 { &resp_data[1..] } else { &resp_data };
         let resp =
-            crate::runtime::infrastructure::proto::runtime::decode_vram_response(actual_data);
+            crate::runtime::infrastructure::proto::runtime::decode_vram_response(actual_data)
+                .map_err(|e| DomainError::StorageError { message: e })?;
 
         Ok(resp.available_mb)
     }

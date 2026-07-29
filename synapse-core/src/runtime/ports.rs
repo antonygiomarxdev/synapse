@@ -60,13 +60,13 @@ mod tests {
         // compile-time assertion: if a method is added/removed,
         // the implementations in infrastructure/ must be updated.
         fn _check(p: &dyn super::InferencePort) {
-            let _ = p.load(&crate::model::ModelId::new("test").unwrap(), &[]);
             let _ = p.generate(&crate::swarm::ports::InferenceRequest::new(
                 uuid::Uuid::new_v4(),
                 crate::model::ModelId::new("test").unwrap(),
                 crate::swarm::ports::Priority::Batch,
                 None,
                 100,
+                vec![], // no tokenizer in test
             ));
             let _ = p.verify(&crate::model::ModelId::new("test").unwrap(), "");
             let _ = p.detect_vram();

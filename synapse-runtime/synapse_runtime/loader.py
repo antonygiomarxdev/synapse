@@ -31,7 +31,7 @@ def download_model(hf_repo: str, cache_dir: str | None = None) -> str:
         return snapshot_download(hf_repo, cache_dir=cache_dir)
     except RepositoryNotFoundError as e:
         raise ModelNotFoundError(str(e)) from e
-    except Exception as e:
+    except OSError as e:
         raise RuntimeError(str(e)) from e
 
 
@@ -92,9 +92,7 @@ class ExpertExtractionError(Exception):
     """Raised when expert weights cannot be extracted from a checkpoint."""
 
 
-def extract_experts(
-    model_path: str, expert_indices: list[int]
-) -> dict[int, bytes]:
+def extract_experts(model_path: str, expert_indices: list[int]) -> dict[int, bytes]:
     """Extract expert weights from safetensors checkpoint files.
 
     Searches all `.safetensors` files in the model directory for
@@ -119,9 +117,7 @@ def extract_experts(
 
     safetensors_files = sorted(root.rglob("*.safetensors"))
     if not safetensors_files:
-        raise ExpertExtractionError(
-            f"No .safetensors files found in {model_path}"
-        )
+        raise ExpertExtractionError(f"No .safetensors files found in {model_path}")
 
     requested = set(expert_indices)
     found: dict[int, bytearray] = {}

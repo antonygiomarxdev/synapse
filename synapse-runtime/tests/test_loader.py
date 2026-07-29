@@ -114,15 +114,15 @@ class TestExtractExperts:
     def test_extracts_single_expert_from_safetensors(self) -> None:
         """Extract expert weights from a safetensors file."""
 
-        import numpy as np
-
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a minimal safetensors file with expert weights
-            weights = {"model.experts.0.weight": np.array([1.0, 2.0, 3.0],
-                                                            dtype=np.float32)}
+            weights = {
+                "model.experts.0.weight": np.array([1.0, 2.0, 3.0], dtype=np.float32)
+            }
             _write_safetensors(Path(tmpdir) / "model-00001.safetensors", weights)
 
             from synapse_runtime.loader import extract_experts
+
             result = extract_experts(str(tmpdir), [0])
             assert 0 in result
             data = result[0]
@@ -130,7 +130,6 @@ class TestExtractExperts:
 
     def test_extracts_multiple_experts(self) -> None:
         """Extract multiple experts from safetensors files."""
-        import numpy as np
 
         with tempfile.TemporaryDirectory() as tmpdir:
             weights = {
@@ -140,16 +139,15 @@ class TestExtractExperts:
             _write_safetensors(Path(tmpdir) / "model.safetensors", weights)
 
             from synapse_runtime.loader import extract_experts
+
             result = extract_experts(str(tmpdir), [0, 3])
             assert result.keys() == {0, 3}
 
     def test_missing_expert_raises(self) -> None:
         """Requesting an expert not in the checkpoint raises ExpertExtractionError."""
-        import numpy as np
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            weights = {"model.experts.0.weight": np.array([1.0],
-                                                            dtype=np.float32)}
+            weights = {"model.experts.0.weight": np.array([1.0], dtype=np.float32)}
             _write_safetensors(Path(tmpdir) / "model.safetensors", weights)
 
             from synapse_runtime.loader import ExpertExtractionError, extract_experts
@@ -168,8 +166,11 @@ def _write_safetensors(filepath: Path, tensors: dict[str, np.ndarray]) -> None:
     for name, arr in tensors.items():
         dtype = "F32"
         shape = list(arr.shape)
-        header[name] = {"dtype": dtype, "shape": shape,
-                        "data_offsets": [offset, offset + arr.nbytes]}
+        header[name] = {
+            "dtype": dtype,
+            "shape": shape,
+            "data_offsets": [offset, offset + arr.nbytes],
+        }
         offset += arr.nbytes
 
     header_json = json.dumps(header)

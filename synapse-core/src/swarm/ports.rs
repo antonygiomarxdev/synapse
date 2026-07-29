@@ -20,6 +20,9 @@ pub struct InferenceRequest {
     pub priority: Priority,
     pub swarm: Option<SpecSwarmConfig>,
     pub max_tokens: u32,
+    /// Token IDs for the prompt text. Populated by the tokenizer layer
+    /// before dispatch; empty when tokenizer integration is not yet wired.
+    pub prompt_tokens: Vec<u32>,
 }
 
 impl InferenceRequest {
@@ -30,8 +33,9 @@ impl InferenceRequest {
         priority: Priority,
         swarm: Option<SpecSwarmConfig>,
         max_tokens: u32,
+        prompt_tokens: Vec<u32>,
     ) -> Self {
-        Self { id, model, priority, swarm, max_tokens }
+        Self { id, model, priority, swarm, max_tokens, prompt_tokens }
     }
 }
 
@@ -97,6 +101,7 @@ mod tests {
             priority: Priority::Realtime,
             swarm: Some(SpecSwarmConfig::new(ModelId::new("kimi-k3").unwrap(), 5).unwrap()),
             max_tokens: 10,
+            prompt_tokens: vec![],
         };
         let engine = DummyEngine;
         let out = engine.generate(&req).unwrap();

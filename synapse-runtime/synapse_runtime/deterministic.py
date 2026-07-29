@@ -28,9 +28,7 @@ def enforce_seed_zero(engine: VllmEngine) -> None:
     )
 
 
-def verify_determinism(
-    engine: VllmEngine, prompt_tokens: list[int]
-) -> bool:
+def verify_determinism(engine: VllmEngine, prompt_tokens: list[int]) -> bool:
     """Verify that two runs with seed=0 produce identical outputs.
 
     Runs the same prompt twice and compares token IDs and logprobs.
@@ -49,7 +47,4 @@ def verify_determinism(
     run1 = engine.generate(prompt_tokens, seed=0, max_tokens=_VERIFY_MAX_TOKENS)
     run2 = engine.generate(prompt_tokens, seed=0, max_tokens=_VERIFY_MAX_TOKENS)
 
-    return (
-        run1.token_ids == run2.token_ids
-        and run1.log_probs == run2.log_probs
-    )
+    return run1.token_ids == run2.token_ids and run1.log_probs == run2.log_probs

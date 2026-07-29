@@ -100,6 +100,9 @@ class TestRuntimeServerHandleRequest:
         assert isinstance(resp, GenerateResponse)
         assert resp.finished is True
         assert resp.token_ids == []
+        assert resp.request_id.startswith(b"ERROR:"), (
+            f"Expected ERROR prefix in request_id, got {resp.request_id!r}"
+        )
 
     @patch("synapse_runtime.server.VllmEngine")
     @patch("synapse_runtime.server.detect_vram")
