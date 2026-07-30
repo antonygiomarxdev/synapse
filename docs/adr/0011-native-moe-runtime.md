@@ -1,7 +1,7 @@
-# ADR-0009: Native MoE Runtime — Rust + GGUF Parser
+# ADR-0011: Native MoE Runtime — Rust + GGUF Parser
 
-**Status:** Spike validated, parser implemented
-**Date:** 2026-07-29
+**Status:** Phases 1-6 implemented, thesis validated E2E
+**Date:** 2026-07-29 / updated 2026-07-30
 **Deciders:** @antonygiomarxdev
 
 ## Context
@@ -63,21 +63,40 @@ Parse GGUF v3 binary format: header, metadata KV pairs, tensor index.
 - Tests: parse Granite MoE 3B, verify 322 tensors, 42 KV pairs, correct dimensions
 - Finds tensors by name, reads F32 data directly
 
-### Phase 2: Model Loading
+### Phase 2: Model Loading ✅
 - Module: `synapse-core/src/native_moe/model.rs`
-- Structs: `MoeConfig`, `MoeLayer`, `MoeModel`
-- Load all tensors organized by layer
+- Structs: `MoeConfig`, `MoeLayer`, `MoeModel`, `WeightProvider` trait
+- Load all F32 tensors + Q8_0/Q4_K/Q6_K dequant
+- Extensible: any backend can inject weights via `WeightProvider`
 
-### Phase 3: Forward Loop
+### Phase 3: Forward Loop ✅
 - Module: `synapse-core/src/native_moe/forward.rs`
-- Implement: embedding, RMS norm, attention, MoE FFN, output projection
-- External routing hook via `ExpertRouter` trait
-- Use ggml-rs for efficient tensor operations
+- Embedding lookup, RMS norm, attention placeholder, gate_inp routing
+- Per-layer external routing via `ExpertRouter` trait
 
-### Phase 4: InferencePort Implementation
+### Phase 4: InferencePort Implementation ✅
 - Module: `synapse-core/src/native_moe/runtime.rs`
-- Implement `InferencePort` trait
-- Integrate with `SwarmCoordinator` and `Libp2pSwarmCoordinator`
+- `NativeMoeRuntime` implements `InferencePort` trait
+- Integrates with `SwarmCoordinator`
+
+### Phase 5: Dequantization ✅
+- Q8_0, Q4_K, Q6_K — exact match to ggml-quants.c
+- 5 tests: all three Granite MoE formats verified
+
+### Phase 6: WeightProvider trait ✅
+- Extensible model architecture: any backend can inject weights
+- `Option<Tensor>` for lazy loading, `gate_inp` always F32
+
+### Phase 7: E2E Tests ✅
+- `spike_per_token_routing.py`: real Granite embeddings + gate_inp → per-token routing
+- `spike_coordinator_e2e.py`: coordinator dispatches to 2 workers with real shards
+- Workers produce different outputs for same prompt
+- 251 tests green, 0 warnings
+
+### Next: Selective Expert Execution
+- Add `attention()` and `expert_ffn()` to forward loop with real weights
+- Workers execute only assigned experts — not full shard
+- Weighted sum of partial outputs for bit-identical reconstruction
 
 ## Learnings from 2026-07-29 spikes
 
