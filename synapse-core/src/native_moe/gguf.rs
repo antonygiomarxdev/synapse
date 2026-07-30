@@ -183,6 +183,11 @@ impl GgufFile {
         self.tensors.iter().find(|t| t.name == name)
     }
 
+    /// Absolute file offset where tensor data region starts.
+    pub fn data_file_offset(&self) -> u64 {
+        self.data_region.file_offset
+    }
+
     /// Read raw tensor data as f32 from file (dequantized or directly read).
     pub fn read_tensor_f32(&self, path: &Path, info: &TensorInfo) -> io::Result<Vec<f32>> {
         let mut f = fs::File::open(path)?;
