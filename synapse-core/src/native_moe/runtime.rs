@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use crate::model::{ExpertId, ModelId};
-use crate::native_moe::forward::{forward, ForwardOutput};
+use crate::native_moe::forward::forward;
 use crate::native_moe::model::MoeModel;
 use crate::runtime::ports::InferencePort;
 use crate::shared::DomainError;
@@ -33,7 +33,7 @@ impl InferencePort for NativeMoeRuntime {
             DomainError::ModelNotFound { model_id: "no path configured".into() }
         })?;
 
-        let loaded = MoeModel::load(path).map_err(|e| {
+        let loaded = MoeModel::load_routing(path).map_err(|e| {
             DomainError::StorageError { message: e }
         })?;
 

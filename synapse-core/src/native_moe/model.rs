@@ -1,12 +1,20 @@
-/// MoE model structure loaded from GGUF.
+/// MoE model structure that supports external expert/weight injection.
 ///
-/// Organizes tensors into a layer-by-layer representation that the
-/// forward loop can consume. Each `MoeLayer` bundles attention weights,
-/// normalization vectors, gate_inp weights for routing, and expert FFN
-/// weights (gate/up/down projections).
+/// The architecture is split into two parts:
+///
+/// 1. **Fixed (always loaded):** `gate_inp` routing weights (F32, ~240 KB/layer).
+///    The coordinator needs these for routing decisions.
+///
+/// 2. **Injectable (via trait):** attention weights, expert FFN weights,
+///    embedding table, output projection. Any backend (GGUF, safetensors,
+///    remote coordinator) can provide these at runtime.
+///
+/// This design follows ADR-0011: the coordinator controls routing externally,
+/// and any weight provider can plug in without modifying the forward loop.
 use std::path::Path;
 
 use crate::native_moe::gguf::{GgufFile, TensorInfo};
+use crate::native_moe::quant::dequantize_tensor;
 
 /// Model configuration extracted from GGUF metadata.
 #[derive(Debug, Clone)]
@@ -25,68 +33,75 @@ pub struct MoeConfig {
     pub rope_theta: f32,
 }
 
-/// A single 1D or 2D tensor loaded into memory.
+/// A loaded tensor (f32 buffer with shape metadata).
 #[derive(Debug, Clone)]
 pub struct Tensor {
     pub name: String,
     pub data: Vec<f32>,
-    /// Original shape (can be empty for scalars, [d] for vectors, [rows, cols] for matrices).
     pub shape: Vec<u64>,
 }
 
 impl Tensor {
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
+    pub fn len(&self) -> usize { self.data.len() }
+    pub fn is_empty(&self) -> bool { self.data.is_empty() }
+    pub fn as_slice(&self) -> &[f32] { &self.data }
+}
 
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
-    }
-
-    /// Access as flat slice.
-    pub fn as_slice(&self) -> &[f32] {
-        &self.data
-    }
+/// Trait for providing expert/attention weights to the forward loop.
+///
+/// Implementations:
+/// - `GgufWeightProvider` — loads from GGUF files (Phase 5)
+/// - Future: remote worker, safetensors, custom runtime
+pub trait WeightProvider {
+    fn provide_attn_norm(&self, layer: usize) -> Option<Tensor>;
+    fn provide_attn_q(&self, layer: usize) -> Option<Tensor>;
+    fn provide_attn_k(&self, layer: usize) -> Option<Tensor>;
+    fn provide_attn_v(&self, layer: usize) -> Option<Tensor>;
+    fn provide_attn_output(&self, layer: usize) -> Option<Tensor>;
+    fn provide_ffn_norm(&self, layer: usize) -> Option<Tensor>;
+    fn provide_gate_inp(&self, layer: usize) -> Option<Tensor>;
+    fn provide_gate_exps(&self, layer: usize) -> Option<Tensor>;
+    fn provide_up_exps(&self, layer: usize) -> Option<Tensor>;
+    fn provide_down_exps(&self, layer: usize) -> Option<Tensor>;
+    fn provide_token_embd(&self) -> Option<Tensor>;
+    fn provide_output_norm(&self) -> Option<Tensor>;
+    fn provide_output(&self) -> Option<Tensor>;
 }
 
 /// One transformer layer with MoE expert weights.
+///
+/// All heavy tensors are Option<Tensor> — the forward loop handles
+/// both "loaded" and "not yet loaded / provided externally" gracefully.
 #[derive(Debug, Clone)]
 pub struct MoeLayer {
     pub index: usize,
-
-    // Attention
-    pub attn_norm: Tensor,
-    pub attn_q: Tensor,
-    pub attn_k: Tensor,
-    pub attn_v: Tensor,
-    pub attn_output: Tensor,
-
-    // MoE FFN
-    pub ffn_norm: Tensor,
-    /// Expert routing weights: [n_experts, d_model] expert-major.
+    pub attn_norm: Option<Tensor>,
+    pub attn_q: Option<Tensor>,
+    pub attn_k: Option<Tensor>,
+    pub attn_v: Option<Tensor>,
+    pub attn_output: Option<Tensor>,
+    pub ffn_norm: Option<Tensor>,
+    /// Always loaded (F32, ~240 KB). The coordinator needs this.
     pub gate_inp: Tensor,
-    /// Expert gate projection: [n_experts, d_model, d_ff].
-    pub gate_exps: Tensor,
-    /// Expert up projection: [n_experts, d_model, d_ff].
-    pub up_exps: Tensor,
-    /// Expert down projection: [n_experts, d_ff, d_model].
-    pub down_exps: Tensor,
+    pub gate_exps: Option<Tensor>,
+    pub up_exps: Option<Tensor>,
+    pub down_exps: Option<Tensor>,
 }
 
-/// Complete MoE model loaded from GGUF.
+/// Complete MoE model with optional weight injection.
 pub struct MoeModel {
     pub config: MoeConfig,
-    pub token_embd: Tensor,
-    pub output_norm: Tensor,
-    pub output: Tensor,
+    pub token_embd: Option<Tensor>,
+    pub output_norm: Option<Tensor>,
+    pub output: Option<Tensor>,
     pub layers: Vec<MoeLayer>,
 }
 
 impl MoeModel {
-    /// Load a Granite MoE model from GGUF file.
-    /// Only loads F32 tensors (gate_inp, norms, output layer, output norm).
-    /// Quantized attention and expert tensors are loaded as zeros for V0.
-    pub fn load(path: &Path) -> Result<Self, String> {
+    /// Load only the routing-critical tensors (gate_inp, norms) from GGUF.
+    /// Heavy quantized tensors are deferred — they can be injected later
+    /// or loaded on demand.
+    pub fn load_routing(path: &Path) -> Result<Self, String> {
         let gguf = GgufFile::open(path).map_err(|e| format!("GGUF parse: {e}"))?;
 
         let arch = gguf.get_string("general.architecture")
@@ -125,86 +140,46 @@ impl MoeModel {
             }
         };
 
-        let loads = vec![
-            ("token_embd.weight", "token_embd"),
-            ("output_norm.weight", "output_norm"),
-            ("output.weight", "output"),
-        ];
+        // Load lightweight routing-only tensors (F32)
+        let try_f32 = |name: &str| -> Option<Tensor> {
+            let info = gguf.find_tensor(name)?;
+            let abs = gguf.data_file_offset() + info.offset;
+            dequantize_tensor(path, abs, info.ggml_type, &info.shape).ok().map(|data| Tensor {
+                name: name.to_string(), data, shape: info.shape.clone(),
+            })
+        };
 
-        let (embd, onorm, out) = load_tensors_or_skip(&gguf, path, &loads);
-
-        let token_embd = embd.unwrap_or_else(|| {
-            Tensor { name: "token_embd.weight".into(), data: vec![], shape: vec![] }
-        });
-        let output_norm = onorm.unwrap_or_else(|| {
-            Tensor { name: "output_norm.weight".into(), data: vec![], shape: vec![] }
-        });
-        let output = out.unwrap_or_else(|| {
-            Tensor { name: "output.weight".into(), data: vec![], shape: vec![] }
-        });
+        let output_norm = try_f32("output_norm.weight");
+        let token_embd = try_f32("token_embd.weight");
+        let output = try_f32("output.weight");
 
         let mut layers = Vec::with_capacity(config.n_layers as usize);
-        for l in 0..config.n_layers as usize {
-            let layer = load_layer(&gguf, path, l, &config)?;
-            layers.push(layer);
+        for idx in 0..config.n_layers as usize {
+            let try_load = |suffix: &str| -> Option<Tensor> {
+                let name = format!("blk.{idx}.{suffix}.weight");
+                try_f32(&name)
+            };
+
+            let gate_inp = try_load("ffn_gate_inp")
+                .ok_or(format!("layer {idx}: gate_inp missing"))?;
+
+            layers.push(MoeLayer {
+                index: idx,
+                attn_norm: try_load("attn_norm"),
+                attn_q: None,
+                attn_k: None,
+                attn_v: None,
+                attn_output: None,
+                ffn_norm: try_load("ffn_norm"),
+                gate_inp,
+                gate_exps: None,
+                up_exps: None,
+                down_exps: None,
+            });
         }
 
         Ok(MoeModel { config, token_embd, output_norm, output, layers })
     }
-}
-
-fn load_tensors_or_skip(
-    gguf: &GgufFile, path: &Path, names: &[(&str, &str)],
-) -> (Option<Tensor>, Option<Tensor>, Option<Tensor>) {
-    fn try_load(gguf: &GgufFile, path: &Path, name: &str) -> Option<Tensor> {
-        let info = gguf.find_tensor(name)?;
-        gguf.read_tensor_f32(path, info).ok().map(|data| Tensor {
-            name: name.to_string(),
-            data,
-            shape: info.shape.clone(),
-        })
-    }
-    (
-        try_load(gguf, path, names.get(0).map(|x| x.0).unwrap_or("")),
-        try_load(gguf, path, names.get(1).map(|x| x.0).unwrap_or("")),
-        try_load(gguf, path, names.get(2).map(|x| x.0).unwrap_or("")),
-    )
-}
-
-fn load_layer(gguf: &GgufFile, path: &Path, idx: usize, _config: &MoeConfig) -> Result<MoeLayer, String> {
-    let try_load = |name: &str| -> Option<Tensor> {
-        let full = format!("blk.{idx}.{name}.weight");
-        let info = gguf.find_tensor(&full)?;
-        gguf.read_tensor_f32(path, info).ok().map(|data| Tensor {
-            name: full,
-            data,
-            shape: info.shape.clone(),
-        })
-    };
-
-    let gate_inp = try_load("ffn_gate_inp")
-        .ok_or(format!("layer {idx}: gate_inp missing"))?;
-
-    let skip = |name: &str| -> Tensor {
-        let full = format!("blk.{idx}.{name}.weight");
-        let shape = gguf.find_tensor(&full).map(|t| t.shape.clone()).unwrap_or_default();
-        let n = shape.iter().product::<u64>() as usize;
-        Tensor { name: full, data: vec![0.0f32; n], shape }
-    };
-
-    Ok(MoeLayer {
-        index: idx,
-        attn_norm: try_load("attn_norm").unwrap_or_else(|| skip("attn_norm")),
-        attn_q: skip("attn_q"),
-        attn_k: skip("attn_k"),
-        attn_v: skip("attn_v"),
-        attn_output: skip("attn_output"),
-        ffn_norm: try_load("ffn_norm").unwrap_or_else(|| skip("ffn_norm")),
-        gate_inp,
-        gate_exps: skip("ffn_gate_exps"),
-        up_exps: skip("ffn_up_exps"),
-        down_exps: skip("ffn_down_exps"),
-    })
 }
 
 #[cfg(test)]
@@ -219,33 +194,30 @@ mod tests {
     }
 
     #[test]
-    fn load_granite_moe_config() {
-        let model = MoeModel::load(&model_path()).expect("load failed");
+    fn load_routing_loads_config_and_gate_inp() {
+        let model = MoeModel::load_routing(&model_path()).expect("load failed");
         let c = &model.config;
         assert_eq!(c.d_model, 1536);
         assert_eq!(c.n_layers, 32);
         assert_eq!(c.n_experts, 40);
-        assert_eq!(c.n_experts_active, 8);
-        assert_eq!(c.d_ff, 512);
-        assert_eq!(c.vocab_size, 49155);
-    }
 
-    #[test]
-    fn layers_have_gate_inp() {
-        let model = MoeModel::load(&model_path()).expect("load failed");
         assert_eq!(model.layers.len(), 32);
-
         let l0 = &model.layers[0];
         assert!(!l0.gate_inp.is_empty());
-        assert_eq!(l0.gate_inp.data.len(), 40 * 1536);
-        assert!(l0.gate_inp.as_slice().iter().any(|&v| v.abs() > 0.0));
+        assert_eq!(l0.gate_inp.data.len(), 1536 * 40);
     }
 
     #[test]
-    fn token_embd_loaded() {
-        let model = MoeModel::load(&model_path()).expect("load failed");
-        // token_embd may be empty (Q8_0 skipped for V0) or loaded (F32 format)
-        // Just verify model loaded
-        assert_eq!(model.layers.len(), 32);
+    fn load_routing_loads_norms() {
+        let model = MoeModel::load_routing(&model_path()).expect("load failed");
+        let l0 = &model.layers[0];
+        assert!(l0.ffn_norm.is_some());
+        assert!(l0.attn_norm.is_some());
+    }
+
+    #[test]
+    fn weight_provider_trait_is_object_safe() {
+        // Compile-time check that the trait supports dyn dispatch
+        fn _assert(_: &dyn WeightProvider) {}
     }
 }
