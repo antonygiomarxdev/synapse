@@ -22,11 +22,21 @@ pub struct ForwardOutput {
 ///
 /// Returns logits for the last token position and per-layer routing decisions.
 pub fn forward(model: &MoeModel, prompt_tokens: &[u32]) -> ForwardOutput {
-    let d_model = model.config.d_model as usize;
     let n_tokens = prompt_tokens.len();
+    let d_model = model.config.d_model as usize;
 
-    // Phase 0: Embedding lookup (token → hidden state). For V0, use zeros.
-    let mut hidden = vec![vec![0.0f32; d_model]; n_tokens];
+    // Phase 0: Embedding lookup. token_embd: [vocab, d_model]
+    let mut hidden = if let Some(ref embd) = model.token_embd {
+        let vocab = embd.shape[0] as usize;
+        let d = embd.shape[1] as usize;
+        prompt_tokens.iter().map(|&tid| {
+            let idx = tid as usize % vocab;
+            let offset = idx * d;
+            embd.data[offset..offset + d].to_vec()
+        }).collect()
+    } else {
+        vec![vec![0.0f32; d_model]; n_tokens]
+    };
 
     let mut routes = Vec::new();
 

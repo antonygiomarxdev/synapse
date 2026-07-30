@@ -140,7 +140,7 @@ impl MoeModel {
             }
         };
 
-        // Load lightweight routing-only tensors (F32)
+        // Load lightweight routing-only tensors (F32) + optional token_embd
         let try_f32 = |name: &str| -> Option<Tensor> {
             let info = gguf.find_tensor(name)?;
             let abs = gguf.data_file_offset() + info.offset;
@@ -150,6 +150,7 @@ impl MoeModel {
         };
 
         let output_norm = try_f32("output_norm.weight");
+        // token_embd is Q8_0 — our dequant handles it
         let token_embd = try_f32("token_embd.weight");
         let output = try_f32("output.weight");
 
