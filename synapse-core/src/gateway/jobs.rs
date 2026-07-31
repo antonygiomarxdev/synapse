@@ -146,6 +146,64 @@ pub async fn create_job(
             .into_response();
     }
 
+    // Trigger scheduler to process the job if available.
+    //
+    // Spawns a background task that:
+    // 1. Decomposes the job into individual tasks (one per message)
+    // 2. Dispatches tasks to workers via the scheduler
+    // 3. Retries failed tasks up to the scheduler's max retry limit
+    // 4. Completes or fails the job based on task outcomes
+    //
+    // Errors are logged via `tracing::error!` and the job transitions to Failed state.
+    if let Some(scheduler) = &state.scheduler {
+        let scheduler = scheduler.clone();
+        let job_id = job.id;
+        let messages = job.messages.clone();
+        let model = job.model.clone();
+
+        tokio::spawn(async move {
+            let now = chrono::Utc::now();
+
+            // Decompose job into tasks
+            if let Err(e) = scheduler.decompose(&job_id, &messages, &model, now) {
+                tracing::error!(job_id = %job_id, error = %e, "Failed to decompose job");
+                // Mark job as failed
+                if let Err(e2) = scheduler.job_store.fail(&job_id, e.to_string()) {
+                    tracing::error!(job_id = %job_id, error = %e2, "Failed to mark job as failed");
+                }
+                return;
+            }
+
+            // Process tasks with retry loop
+            let max_ticks = 10; // Prevent infinite loops
+            for tick_num in 0..max_ticks {
+                match scheduler.tick(now).await {
+                    Ok(0) => {
+                        // No tasks processed, job might be complete
+                        tracing::debug!(job_id = %job_id, tick = tick_num, "No tasks to process");
+                        break;
+                    }
+                    Ok(processed) => {
+                        tracing::debug!(job_id = %job_id, tick = tick_num, tasks = processed, "Processed tasks");
+                    }
+                    Err(e) => {
+                        tracing::error!(job_id = %job_id, tick = tick_num, error = %e, "Scheduler tick failed");
+                        // Mark job as failed on scheduler error
+                        if let Err(e2) = scheduler.job_store.fail(&job_id, e.to_string()) {
+                            tracing::error!(job_id = %job_id, error = %e2, "Failed to mark job as failed");
+                        }
+                        return;
+                    }
+                }
+
+                // Small delay between ticks to prevent busy-waiting
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+
+            tracing::info!(job_id = %job_id, "Job processing completed");
+        });
+    }
+
     (
         StatusCode::ACCEPTED,
         Json(CreateJobResponse { job_id: job_id.to_string() }),
