@@ -153,6 +153,61 @@ impl MetricsCollector {
             execution_time_p99_ms: percentile(&exec_times, 99),
         }
     }
+
+    /// Export metrics in Prometheus text format.
+    pub fn export_prometheus(&self) -> String {
+        let r = self.report();
+        format!(
+            "# HELP synapse_jobs_total Total jobs submitted\n\
+             # TYPE synapse_jobs_total counter\n\
+             synapse_jobs_total {}\n\
+             # HELP synapse_jobs_completed Total jobs completed\n\
+             # TYPE synapse_jobs_completed counter\n\
+             synapse_jobs_completed {}\n\
+             # HELP synapse_jobs_failed Total jobs failed\n\
+             # TYPE synapse_jobs_failed counter\n\
+             synapse_jobs_failed {}\n\
+             # HELP synapse_tasks_total Total tasks dispatched\n\
+             # TYPE synapse_tasks_total counter\n\
+             synapse_tasks_total {}\n\
+             # HELP synapse_tasks_retried Total tasks retried\n\
+             # TYPE synapse_tasks_retried counter\n\
+             synapse_tasks_retried {}\n\
+             # HELP synapse_tokens_total Total tokens generated\n\
+             # TYPE synapse_tokens_total counter\n\
+             synapse_tokens_total {}\n\
+             # HELP synapse_queue_time_p50_ms Queue time p50 in milliseconds\n\
+             # TYPE synapse_queue_time_p50_ms gauge\n\
+             synapse_queue_time_p50_ms {}\n\
+             # HELP synapse_queue_time_p95_ms Queue time p95 in milliseconds\n\
+             # TYPE synapse_queue_time_p95_ms gauge\n\
+             synapse_queue_time_p95_ms {}\n\
+             # HELP synapse_queue_time_p99_ms Queue time p99 in milliseconds\n\
+             # TYPE synapse_queue_time_p99_ms gauge\n\
+             synapse_queue_time_p99_ms {}\n\
+             # HELP synapse_execution_time_p50_ms Execution time p50 in milliseconds\n\
+             # TYPE synapse_execution_time_p50_ms gauge\n\
+             synapse_execution_time_p50_ms {}\n\
+             # HELP synapse_execution_time_p95_ms Execution time p95 in milliseconds\n\
+             # TYPE synapse_execution_time_p95_ms gauge\n\
+             synapse_execution_time_p95_ms {}\n\
+             # HELP synapse_execution_time_p99_ms Execution time p99 in milliseconds\n\
+             # TYPE synapse_execution_time_p99_ms gauge\n\
+             synapse_execution_time_p99_ms {}\n",
+            r.total_jobs,
+            r.completed_jobs,
+            r.failed_jobs,
+            r.total_tasks,
+            r.retried_tasks,
+            r.tokens_total,
+            r.queue_time_p50_ms,
+            r.queue_time_p95_ms,
+            r.queue_time_p99_ms,
+            r.execution_time_p50_ms,
+            r.execution_time_p95_ms,
+            r.execution_time_p99_ms,
+        )
+    }
 }
 
 impl Default for MetricsCollector {

@@ -10,6 +10,7 @@ use utoipa::ToSchema;
 use crate::job::job::{Job, Message, Priority};
 use crate::job::job_id::JobId;
 use crate::job::ports::JobStore;
+use crate::scheduler::metrics::MetricsCollector;
 use crate::scheduler::scheduler::Scheduler;
 
 /// Shared application state injected into handlers.
@@ -17,6 +18,7 @@ use crate::scheduler::scheduler::Scheduler;
 pub struct AppState {
     pub job_store: Arc<dyn JobStore>,
     pub scheduler: Option<Arc<Scheduler>>,
+    pub metrics: Arc<MetricsCollector>,
 }
 
 // --- Request types ---
@@ -146,6 +148,9 @@ pub async fn create_job(
             .into_response();
     }
 
+    // Record job submission
+    state.metrics.record_job_submit();
+
     // Trigger scheduler to process the job if available.
     //
     // Spawns a background task that:
@@ -160,6 +165,7 @@ pub async fn create_job(
         let job_id = job.id;
         let messages = job.messages.clone();
         let model = job.model.clone();
+        let metrics = state.metrics.clone();
 
         tokio::spawn(async move {
             let now = chrono::Utc::now();
@@ -171,6 +177,7 @@ pub async fn create_job(
                 if let Err(e2) = scheduler.job_store.fail(&job_id, e.to_string()) {
                     tracing::error!(job_id = %job_id, error = %e2, "Failed to mark job as failed");
                 }
+                metrics.record_job_fail();
                 return;
             }
 
@@ -185,6 +192,10 @@ pub async fn create_job(
                     }
                     Ok(processed) => {
                         tracing::debug!(job_id = %job_id, tick = tick_num, tasks = processed, "Processed tasks");
+                        // Record task dispatch with latency (placeholder: 0ms for now)
+                        for _ in 0..processed {
+                            metrics.record_task_dispatch(0, 0, 0);
+                        }
                     }
                     Err(e) => {
                         tracing::error!(job_id = %job_id, tick = tick_num, error = %e, "Scheduler tick failed");
@@ -192,6 +203,7 @@ pub async fn create_job(
                         if let Err(e2) = scheduler.job_store.fail(&job_id, e.to_string()) {
                             tracing::error!(job_id = %job_id, error = %e2, "Failed to mark job as failed");
                         }
+                        metrics.record_job_fail();
                         return;
                     }
                 }
@@ -201,6 +213,7 @@ pub async fn create_job(
             }
 
             tracing::info!(job_id = %job_id, "Job processing completed");
+            metrics.record_job_complete();
         });
     }
 
@@ -289,6 +302,7 @@ mod tests {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
             scheduler: None,
+            metrics: Arc::new(MetricsCollector::new()),
         };
         axum::Router::new()
             .route("/v1/jobs", axum::routing::post(create_job))
@@ -396,6 +410,7 @@ mod tests {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
             scheduler: None,
+            metrics: Arc::new(MetricsCollector::new()),
         };
 
         // Create a job first
@@ -469,6 +484,7 @@ mod tests {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
             scheduler: None,
+            metrics: Arc::new(MetricsCollector::new()),
         };
 
         let app = axum::Router::new()
@@ -542,6 +558,7 @@ mod tests {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
             scheduler: None,
+            metrics: Arc::new(MetricsCollector::new()),
         };
 
         let app = axum::Router::new()

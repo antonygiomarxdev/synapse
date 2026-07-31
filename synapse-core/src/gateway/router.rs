@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 
 use crate::job::job::{Job, Message as JobMessage, Priority};
@@ -56,6 +56,20 @@ pub struct Choice {
 
 fn default_priority() -> String {
     "normal".into()
+}
+
+/// Handles Prometheus metrics requests.
+///
+/// Returns metrics in Prometheus text format.
+pub async fn metrics_handler(
+    State(state): State<super::jobs::AppState>,
+) -> impl IntoResponse {
+    let prometheus = state.metrics.export_prometheus();
+    (
+        StatusCode::OK,
+        [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
+        prometheus,
+    )
 }
 
 /// Handles OpenAI-compatible chat completion requests.
@@ -184,6 +198,7 @@ mod tests {
         super::super::jobs::AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
             scheduler: None,
+            metrics: Arc::new(crate::scheduler::metrics::MetricsCollector::new()),
         }
     }
 
