@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Design Spec
+    url: https://github.com/antonygiomarxdev/synapse/blob/main/docs/superpowers/specs/2026-07-27-synapse-design.md
+    about: Read the design spec before proposing features
