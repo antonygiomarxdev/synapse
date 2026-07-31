@@ -57,10 +57,7 @@ mod tests {
         fn update_status(&self, id: &JobId, status: JobStatus) -> Result<(), DomainError> {
             let mut jobs = self.jobs.lock().unwrap();
             match jobs.get_mut(id) {
-                Some(job) => {
-                    job.status = status;
-                    Ok(())
-                }
+                Some(job) => job.transition_to(status),
                 None => Err(DomainError::JobNotFound { job_id: id.to_string() }),
             }
         }

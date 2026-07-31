@@ -56,10 +56,7 @@ impl JobStore for InMemoryJobStore {
             message: format!("lock poisoned: {e}"),
         })?;
         match jobs.get_mut(id) {
-            Some(job) => {
-                job.status = status;
-                Ok(())
-            }
+            Some(job) => job.transition_to(status),
             None => Err(DomainError::JobNotFound { job_id: id.to_string() }),
         }
     }
@@ -142,5 +139,39 @@ mod tests {
         let store = InMemoryJobStore::new();
         let result = store.update_status(&JobId::new(), JobStatus::Running);
         assert!(matches!(result, Err(DomainError::JobNotFound { .. })));
+    }
+
+    #[test]
+    fn update_status_rejects_invalid_transition() {
+        let store = InMemoryJobStore::new();
+        let job = test_job();
+        let id = job.id;
+        store.save(&job).unwrap();
+        // Pending → Completed is invalid
+        let result = store.update_status(&id, JobStatus::Completed);
+        assert!(matches!(result, Err(DomainError::InvalidJobTransition { .. })));
+        // Status unchanged
+        let found = store.find_by_id(&id).unwrap().unwrap();
+        assert_eq!(found.status, JobStatus::Pending);
+    }
+
+    #[test]
+    fn hundred_concurrent_jobs_all_retrievable() {
+        let store = InMemoryJobStore::new();
+        let mut ids = Vec::new();
+
+        for _ in 0..100 {
+            let job = test_job();
+            ids.push(job.id);
+            store.save(&job).unwrap();
+        }
+
+        assert_eq!(store.list().unwrap().len(), 100);
+
+        for id in &ids {
+            let found = store.find_by_id(id).unwrap();
+            assert!(found.is_some(), "job {id} should be retrievable");
+            assert_eq!(found.unwrap().status, JobStatus::Pending);
+        }
     }
 }

@@ -103,13 +103,19 @@ pub async fn create_job(
     State(state): State<AppState>,
     Json(req): Json<CreateJobRequest>,
 ) -> impl IntoResponse {
-    let priority = req
-        .priority
-        .as_deref()
-        .map(|p| p.parse::<Priority>())
-        .transpose()
-        .unwrap_or(Some(Priority::Normal))
-        .unwrap_or(Priority::Normal);
+    let priority = match req.priority.as_deref() {
+        Some(p) => match p.parse::<Priority>() {
+            Ok(pr) => pr,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: format!("invalid priority: {e}") }),
+                )
+                    .into_response();
+            }
+        },
+        None => Priority::Normal,
+    };
 
     let messages: Vec<Message> = req
         .messages
@@ -506,5 +512,30 @@ mod tests {
         let job_id: JobId = created.job_id.parse().unwrap();
         let job = state.job_store.find_by_id(&job_id).unwrap().unwrap();
         assert_eq!(job.priority, Priority::Normal);
+    }
+
+    #[tokio::test]
+    async fn create_job_rejects_invalid_priority() {
+        let app = test_app();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(http::Method::POST)
+                    .uri("/v1/jobs")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "model": "granite-3b-moe",
+                            "messages": [{ "role": "user", "content": "Hello" }],
+                            "priority": "urgent"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }
