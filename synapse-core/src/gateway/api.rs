@@ -4,7 +4,7 @@ use axum::{Json, Router, routing::get};
 use serde::Serialize;
 use utoipa::OpenApi;
 
-use super::{catalog, jobs, router};
+use super::{catalog, jobs, metrics, router};
 use crate::job::infrastructure::InMemoryJobStore;
 use crate::scheduler::scheduler::Scheduler;
 use crate::scheduler::infrastructure::{InMemoryTaskStore, OllamaWorkerPort, WorkerConfig};
@@ -130,6 +130,7 @@ pub fn build_router_with_config(config: GatewayConfig) -> Router {
     let state = jobs::AppState {
         job_store,
         scheduler: Some(scheduler),
+        metrics: metrics::MetricsCollector::new(),
     };
     build_router_with_state(state)
 }

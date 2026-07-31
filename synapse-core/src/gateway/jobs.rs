@@ -7,6 +7,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::gateway::metrics::MetricsCollector;
 use crate::job::job::{Job, Message, Priority};
 use crate::job::job_id::JobId;
 use crate::job::ports::JobStore;
@@ -17,6 +18,7 @@ use crate::scheduler::scheduler::Scheduler;
 pub struct AppState {
     pub job_store: Arc<dyn JobStore>,
     pub scheduler: Option<Arc<Scheduler>>,
+    pub metrics: MetricsCollector,
 }
 
 // --- Request types ---
@@ -289,6 +291,7 @@ mod tests {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
             scheduler: None,
+            metrics: MetricsCollector::new(),
         };
         axum::Router::new()
             .route("/v1/jobs", axum::routing::post(create_job))
@@ -396,6 +399,7 @@ mod tests {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
             scheduler: None,
+            metrics: MetricsCollector::new(),
         };
 
         // Create a job first
@@ -469,6 +473,7 @@ mod tests {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
             scheduler: None,
+            metrics: MetricsCollector::new(),
         };
 
         let app = axum::Router::new()
@@ -542,6 +547,7 @@ mod tests {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
             scheduler: None,
+            metrics: MetricsCollector::new(),
         };
 
         let app = axum::Router::new()
