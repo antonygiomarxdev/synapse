@@ -18,7 +18,8 @@ pub struct WorkerConfig {
 /// Real worker port that dispatches tasks to Ollama via HTTP.
 ///
 /// Maps `WorkerId` to an Ollama model and sends inference requests
-/// to `POST /api/generate`.
+/// to `POST /api/generate`. Uses blocking reqwest for simplicity
+/// in synchronous scheduler contexts.
 pub struct OllamaWorkerPort {
     client: reqwest::blocking::Client,
     workers: HashMap<WorkerId, WorkerConfig>,
@@ -54,10 +55,17 @@ impl OllamaWorkerPort {
 }
 
 impl WorkerPort for OllamaWorkerPort {
-    fn dispatch(&self, worker_id: &WorkerId, task: &Task) -> Result<String, DomainError> {
-        let config = self.workers.get(worker_id).ok_or_else(|| DomainError::WorkerDispatchFailed {
-            reason: format!("unknown worker: {worker_id}"),
-        })?;
+    fn dispatch(
+        &self,
+        worker_id: &WorkerId,
+        task: &Task,
+    ) -> Result<String, DomainError> {
+        let config =
+            self.workers.get(worker_id).ok_or_else(|| {
+                DomainError::WorkerDispatchFailed {
+                    reason: format!("unknown worker: {worker_id}"),
+                }
+            })?;
 
         let url = format!("{}/api/generate", config.base_url);
         let body = OllamaRequest {
@@ -66,7 +74,8 @@ impl WorkerPort for OllamaWorkerPort {
             stream: false,
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&body)
             .send()
@@ -81,10 +90,16 @@ impl WorkerPort for OllamaWorkerPort {
         Ok(response.response)
     }
 
-    fn health_check(&self, worker_id: &WorkerId) -> Result<bool, DomainError> {
-        let config = self.workers.get(worker_id).ok_or_else(|| DomainError::WorkerDispatchFailed {
-            reason: format!("unknown worker: {worker_id}"),
-        })?;
+    fn health_check(
+        &self,
+        worker_id: &WorkerId,
+    ) -> Result<bool, DomainError> {
+        let config =
+            self.workers.get(worker_id).ok_or_else(|| {
+                DomainError::WorkerDispatchFailed {
+                    reason: format!("unknown worker: {worker_id}"),
+                }
+            })?;
 
         let url = format!("{}/api/tags", config.base_url);
         match self.client.get(&url).send() {
@@ -105,7 +120,10 @@ mod tests {
         Task::new(
             JobId::new(),
             "granite3.1-moe:3b".into(),
-            Message { role: "user".into(), content: "Say hello in one word.".into() },
+            Message {
+                role: "user".into(),
+                content: "Say hello in one word.".into(),
+            },
             Utc::now(),
         )
     }
@@ -118,14 +136,19 @@ mod tests {
             base_url: "http://localhost:11434".into(),
         }]);
 
-        let healthy = port.health_check(&WorkerId::new("w-0")).unwrap();
+        let healthy =
+            port.health_check(&WorkerId::new("w-0")).unwrap();
         assert!(healthy);
     }
 
     #[test]
     fn health_check_unknown_worker() {
         let port = OllamaWorkerPort::new(vec![]);
-        let result = port.health_check(&WorkerId::new("unknown"));
-        assert!(matches!(result, Err(DomainError::WorkerDispatchFailed { .. })));
+        let result =
+            port.health_check(&WorkerId::new("unknown"));
+        assert!(matches!(
+            result,
+            Err(DomainError::WorkerDispatchFailed { .. })
+        ));
     }
 }

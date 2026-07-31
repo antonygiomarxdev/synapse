@@ -137,9 +137,10 @@ impl Scheduler {
 
         let start = Instant::now();
         match self.worker_port.dispatch(&worker.id, task) {
-            Ok(_text) => {
+            Ok(text) => {
                 let exec_ms = start.elapsed().as_millis() as u64;
-                self.metrics.record_task_dispatch(0, exec_ms);
+                let tokens = text.split_whitespace().count() as u64;
+                self.metrics.record_task_dispatch(0, exec_ms, tokens);
                 task.complete(now)?;
                 self.task_store.save(task)?;
             }
