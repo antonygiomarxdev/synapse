@@ -1,7 +1,9 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use chrono::{DateTime, Utc};
 
+use super::metrics::MetricsCollector;
 use super::ports::{TaskStore, WorkerPort};
 use super::task::{Task, WorkerInfo};
 use super::task_status::TaskStatus;
@@ -17,11 +19,15 @@ use crate::shared::DomainError;
 /// retries failed tasks, and completes/fails jobs when all
 /// their tasks reach a terminal state.
 pub struct Scheduler {
+    /// Task store for persisting and querying tasks.
     pub task_store: Arc<dyn TaskStore>,
+    /// Job store for persisting and querying jobs.
     pub job_store: Arc<dyn JobStore>,
     worker_port: Arc<dyn WorkerPort>,
     workers: Vec<WorkerInfo>,
     next_worker_idx: std::sync::atomic::AtomicUsize,
+    /// Collector for inference metrics (jobs, tasks, latencies).
+    pub metrics: Arc<MetricsCollector>,
 }
 
 impl Scheduler {
@@ -37,14 +43,17 @@ impl Scheduler {
             worker_port,
             workers,
             next_worker_idx: std::sync::atomic::AtomicUsize::new(0),
+            metrics: Arc::new(MetricsCollector::new()),
         }
     }
 
     /// Decomposes a job into one task per message.
     ///
     /// Transitions the job from Pending to Running via the JobStore port.
+    /// Records a job submission in metrics.
     pub fn decompose(&self, job_id: &JobId, messages: &[crate::job::job::Message], model: &str, now: DateTime<Utc>) -> Result<Vec<Task>, DomainError> {
         self.job_store.start(job_id)?;
+        self.metrics.record_job_submit();
 
         let tasks: Vec<Task> = messages
             .iter()
@@ -90,6 +99,7 @@ impl Scheduler {
             if task.is_lease_expired(now) {
                 task.fail("lease expired".into(), now)?;
                 self.task_store.save(&task)?;
+                self.metrics.record_task_retry();
                 processed += 1;
             }
         }
@@ -100,17 +110,20 @@ impl Scheduler {
             if !task.is_permanently_failed() {
                 task.retry(now)?;
                 self.task_store.save(&task)?;
+                self.metrics.record_task_retry();
                 processed += 1;
             }
         }
 
         // 4. Check if any jobs should be finalized
-        self.finalize_jobs(now)?;
+        self.finalize_jobs()?;
 
         Ok(processed)
     }
 
     /// Dispatches a single task to a worker.
+    ///
+    /// Records queue time and execution time in metrics.
     fn dispatch_task(&self, task: &mut Task, now: DateTime<Utc>) -> Result<(), DomainError> {
         let worker = match self.next_worker() {
             Some(w) => w,
@@ -122,8 +135,11 @@ impl Scheduler {
         task.lease(worker.id.clone(), now)?;
         self.task_store.save(task)?;
 
+        let start = Instant::now();
         match self.worker_port.dispatch(&worker.id, task) {
             Ok(_text) => {
+                let exec_ms = start.elapsed().as_millis() as u64;
+                self.metrics.record_task_dispatch(0, exec_ms);
                 task.complete(now)?;
                 self.task_store.save(task)?;
             }
@@ -137,7 +153,9 @@ impl Scheduler {
     }
 
     /// Checks all jobs for finalization (all tasks terminal → job complete/failed).
-    fn finalize_jobs(&self, _now: DateTime<Utc>) -> Result<(), DomainError> {
+    ///
+    /// Records job completion or failure in metrics.
+    fn finalize_jobs(&self) -> Result<(), DomainError> {
         let running_jobs: Vec<Job> = {
             let all_jobs = self.job_store.list()?;
             all_jobs.into_iter().filter(|j| j.status == crate::job::job_status::JobStatus::Running).collect()
@@ -160,8 +178,10 @@ impl Scheduler {
                     .collect::<Vec<_>>()
                     .join(" ");
                 self.job_store.complete(&job.id, JobResult { text: combined_text, tokens: total_tokens })?;
+                self.metrics.record_job_complete();
             } else if any_permanently_failed {
                 self.job_store.fail(&job.id, "task retries exhausted".into())?;
+                self.metrics.record_job_fail();
             }
         }
 
@@ -217,9 +237,9 @@ mod tests {
         scheduler.job_store.save(&job).unwrap();
         let tasks = scheduler.decompose(&job.id, &job.messages, &job.model, now()).unwrap();
         assert_eq!(tasks.len(), 2);
-        // Job should be Running
         let updated = scheduler.job_store.find_by_id(&job.id).unwrap().unwrap();
         assert_eq!(updated.status, crate::job::job_status::JobStatus::Running);
+        assert_eq!(scheduler.metrics.report().total_jobs, 1);
     }
 
     #[test]
@@ -248,11 +268,11 @@ mod tests {
         let processed = scheduler.tick(now()).unwrap();
         assert!(processed > 0);
 
-        // Tasks should be completed
         let tasks = scheduler.task_store.find_by_job_id(&job.id).unwrap();
         for task in &tasks {
             assert_eq!(task.status, TaskStatus::Completed);
         }
+        assert_eq!(scheduler.metrics.report().total_tasks, 2);
     }
 
     #[test]
@@ -269,6 +289,7 @@ mod tests {
 
         let updated_job = scheduler.job_store.find_by_id(&job_id).unwrap().unwrap();
         assert_eq!(updated_job.status, crate::job::job_status::JobStatus::Completed);
+        assert_eq!(scheduler.metrics.report().completed_jobs, 1);
     }
 
     #[test]
@@ -297,7 +318,6 @@ mod tests {
 
         let log = mock.dispatch_log();
         assert_eq!(log.len(), 4);
-        // Round-robin: w0, w1, w0, w1
         assert_eq!(log[0].0, w0);
         assert_eq!(log[1].0, w1);
         assert_eq!(log[2].0, w0);
@@ -315,5 +335,21 @@ mod tests {
 
         let result = scheduler.tick(now());
         assert!(matches!(result, Err(DomainError::WorkerDispatchFailed { .. })));
+    }
+
+    #[test]
+    fn metrics_track_retries_on_failure() {
+        let (scheduler, mock) = make_scheduler_with_mock(vec![
+            WorkerInfo { id: WorkerId::new("w-0"), model: "model".into(), healthy: true },
+        ]);
+        mock.set_failing(WorkerId::new("w-0"));
+
+        let job = test_job();
+        scheduler.job_store.save(&job).unwrap();
+        scheduler.decompose(&job.id, &job.messages, &job.model, now()).unwrap();
+
+        let _ = scheduler.tick(now());
+        let report = scheduler.metrics.report();
+        assert!(report.retried_tasks > 0, "should have recorded retries");
     }
 }

@@ -19,6 +19,9 @@ pub trait TaskStore: Send + Sync {
 pub trait WorkerPort: Send + Sync {
     /// Dispatches a task to a worker and returns the generated text.
     fn dispatch(&self, worker_id: &WorkerId, task: &Task) -> Result<String, DomainError>;
+
+    /// Checks if the given worker is healthy and reachable.
+    fn health_check(&self, worker_id: &WorkerId) -> Result<bool, DomainError>;
 }
 
 #[cfg(test)]

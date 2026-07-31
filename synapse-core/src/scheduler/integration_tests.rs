@@ -13,7 +13,6 @@ mod tests {
     use crate::job::infrastructure::InMemoryJobStore;
     use crate::job::ports::JobStore;
     use crate::scheduler::infrastructure::{InMemoryTaskStore, MockWorkerPort};
-    use crate::scheduler::metrics::MetricsCollector;
     use crate::scheduler::scheduler::Scheduler;
     use crate::scheduler::worker_id::WorkerId;
     use crate::scheduler::WorkerInfo;
@@ -25,16 +24,15 @@ mod tests {
         ]
     }
 
-    fn make_scheduler(workers: Vec<WorkerInfo>) -> (Scheduler, Arc<MockWorkerPort>, Arc<MetricsCollector>) {
+    fn make_scheduler(workers: Vec<WorkerInfo>) -> (Scheduler, Arc<MockWorkerPort>) {
         let mock = Arc::new(MockWorkerPort::new());
-        let metrics = Arc::new(MetricsCollector::new());
         let scheduler = Scheduler::new(
             Arc::new(InMemoryTaskStore::new()),
             Arc::new(InMemoryJobStore::new()),
             mock.clone(),
             workers,
         );
-        (scheduler, mock, metrics)
+        (scheduler, mock)
     }
 
     /// Submit N jobs with 2 messages each, run tick until all complete.
@@ -82,18 +80,20 @@ mod tests {
 
     #[test]
     fn fifty_jobs_all_complete_with_two_workers() {
-        let (scheduler, _mock, _metrics) = make_scheduler(workers());
+        let (scheduler, _mock) = make_scheduler(workers());
         let job_store = scheduler.job_store.as_ref();
 
         let (completed, failed) = run_jobs(&scheduler, job_store, 50);
 
         assert_eq!(completed, 50, "all 50 jobs should complete");
         assert_eq!(failed, 0, "no jobs should fail");
+        assert_eq!(scheduler.metrics.report().total_jobs, 50);
+        assert_eq!(scheduler.metrics.report().completed_jobs, 50);
     }
 
     #[test]
     fn both_workers_receive_tasks() {
-        let (scheduler, mock, _metrics) = make_scheduler(workers());
+        let (scheduler, mock) = make_scheduler(workers());
         let job_store = scheduler.job_store.as_ref();
 
         run_jobs(&scheduler, job_store, 10);
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn crash_recovery_worker_fails_mid_job() {
-        let (scheduler, mock, _metrics) = make_scheduler(workers());
+        let (scheduler, mock) = make_scheduler(workers());
         let job_store = scheduler.job_store.as_ref();
         let now = Utc::now();
 
@@ -142,13 +142,12 @@ mod tests {
         }
 
         let job = job_store.find_by_id(&job_id).unwrap().unwrap();
-        // With retries, the job should still complete (tasks reassigned to worker-1)
         assert_eq!(job.status, JobStatus::Completed, "job should complete despite worker crash");
     }
 
     #[test]
     fn zero_orphaned_jobs_after_permanent_failure() {
-        let (scheduler, mock, _metrics) = make_scheduler(workers());
+        let (scheduler, mock) = make_scheduler(workers());
         let job_store = scheduler.job_store.as_ref();
         let now = Utc::now();
 
@@ -178,21 +177,6 @@ mod tests {
 
         let job = job_store.find_by_id(&job_id).unwrap().unwrap();
         assert_eq!(job.status, JobStatus::Failed, "job should be failed, not orphaned");
-    }
-
-    #[test]
-    fn metrics_collector_tracks_jobs() {
-        let metrics = MetricsCollector::new();
-
-        metrics.record_job_submit();
-        metrics.record_job_submit();
-        metrics.record_job_complete();
-        metrics.record_task_dispatch(10, 100);
-        metrics.record_task_retry();
-
-        let report = metrics.report();
-        assert_eq!(report.total_jobs, 2);
-        assert_eq!(report.completed_jobs, 1);
-        assert_eq!(report.retry_rate, 1.0);
+        assert_eq!(scheduler.metrics.report().failed_jobs, 1);
     }
 }

@@ -21,22 +21,36 @@ pub struct MetricsCollector {
 /// Snapshot of collected metrics.
 #[derive(Debug, Clone, Serialize)]
 pub struct MetricsReport {
+    /// Total number of jobs submitted.
     pub total_jobs: u64,
+    /// Number of jobs that completed successfully.
     pub completed_jobs: u64,
+    /// Number of jobs that failed permanently.
     pub failed_jobs: u64,
+    /// Ratio of completed to total jobs (0.0–1.0).
     pub success_rate: f64,
+    /// Total number of tasks dispatched.
     pub total_tasks: u64,
+    /// Number of tasks that were retried at least once.
     pub retried_tasks: u64,
+    /// Ratio of retried tasks to total tasks (0.0–1.0).
     pub retry_rate: f64,
+    /// Queue time p50 in milliseconds.
     pub queue_time_p50_ms: u64,
+    /// Queue time p95 in milliseconds.
     pub queue_time_p95_ms: u64,
+    /// Queue time p99 in milliseconds.
     pub queue_time_p99_ms: u64,
+    /// Execution time p50 in milliseconds.
     pub execution_time_p50_ms: u64,
+    /// Execution time p95 in milliseconds.
     pub execution_time_p95_ms: u64,
+    /// Execution time p99 in milliseconds.
     pub execution_time_p99_ms: u64,
 }
 
 impl MetricsCollector {
+    /// Creates a new collector with all counters at zero.
     pub fn new() -> Self {
         Self {
             total_jobs: AtomicU64::new(0),
@@ -49,18 +63,22 @@ impl MetricsCollector {
         }
     }
 
+    /// Records a job submission.
     pub fn record_job_submit(&self) {
         self.total_jobs.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Records a job completion.
     pub fn record_job_complete(&self) {
         self.completed_jobs.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Records a job failure.
     pub fn record_job_fail(&self) {
         self.failed_jobs.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Records a task dispatch with queue time and execution time in milliseconds.
     pub fn record_task_dispatch(&self, queue_ms: u64, exec_ms: u64) {
         self.total_tasks.fetch_add(1, Ordering::Relaxed);
         if let Ok(mut times) = self.queue_times_ms.lock() {
@@ -71,11 +89,15 @@ impl MetricsCollector {
         }
     }
 
+    /// Records a task retry.
     pub fn record_task_retry(&self) {
         self.retried_tasks.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Generates a snapshot of all collected metrics.
+    ///
+    /// Percentiles are calculated from the collected time samples.
+    /// Returns zeros for percentiles when no samples exist.
     pub fn report(&self) -> MetricsReport {
         let total = self.total_jobs.load(Ordering::Relaxed);
         let completed = self.completed_jobs.load(Ordering::Relaxed);
@@ -113,14 +135,17 @@ impl Default for MetricsCollector {
     }
 }
 
-fn percentile(sorted_data: &[u64], p: u64) -> u64 {
-    if sorted_data.is_empty() {
+/// Calculates the p-th percentile from a slice of values.
+///
+/// Sorts a copy of the data internally. Returns 0 for empty slices.
+fn percentile(data: &[u64], p: u64) -> u64 {
+    if data.is_empty() {
         return 0;
     }
-    let mut data = sorted_data.to_vec();
-    data.sort_unstable();
-    let idx = ((p as f64 / 100.0) * (data.len() - 1) as f64).round() as usize;
-    data[idx]
+    let mut sorted = data.to_vec();
+    sorted.sort_unstable();
+    let idx = ((p as f64 / 100.0) * (sorted.len() - 1) as f64).round() as usize;
+    sorted[idx]
 }
 
 #[cfg(test)]
@@ -133,6 +158,7 @@ mod tests {
         let r = mc.report();
         assert_eq!(r.total_jobs, 0);
         assert_eq!(r.success_rate, 0.0);
+        assert_eq!(r.queue_time_p50_ms, 0);
     }
 
     #[test]
@@ -160,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn percentiles() {
+    fn percentile_values() {
         assert_eq!(percentile(&[], 50), 0);
         assert_eq!(percentile(&[100], 50), 100);
         assert_eq!(percentile(&[10, 20, 30, 40, 50], 50), 30);

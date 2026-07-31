@@ -53,6 +53,11 @@ impl WorkerPort for MockWorkerPort {
 
         Ok(format!("mock response for task {}", task.id))
     }
+
+    fn health_check(&self, worker_id: &WorkerId) -> Result<bool, DomainError> {
+        let failures = self.failures.lock().unwrap();
+        Ok(!failures.iter().any(|w| w == worker_id))
+    }
 }
 
 #[cfg(test)]

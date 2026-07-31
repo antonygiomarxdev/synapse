@@ -51,19 +51,6 @@ impl OllamaWorkerPort {
             workers,
         }
     }
-
-    /// Checks if the Ollama instance at the given base URL is reachable.
-    pub async fn health_check(&self, worker_id: &WorkerId) -> Result<bool, DomainError> {
-        let config = self.workers.get(worker_id).ok_or_else(|| DomainError::WorkerDispatchFailed {
-            reason: format!("unknown worker: {worker_id}"),
-        })?;
-
-        let url = format!("{}/api/tags", config.base_url);
-        match self.client.get(&url).send().await {
-            Ok(resp) => Ok(resp.status().is_success()),
-            Err(_) => Ok(false),
-        }
-    }
 }
 
 impl WorkerPort for OllamaWorkerPort {
@@ -99,6 +86,19 @@ impl WorkerPort for OllamaWorkerPort {
 
         Ok(response.response)
     }
+
+    fn health_check(&self, worker_id: &WorkerId) -> Result<bool, DomainError> {
+        let config = self.workers.get(worker_id).ok_or_else(|| DomainError::WorkerDispatchFailed {
+            reason: format!("unknown worker: {worker_id}"),
+        })?;
+
+        let url = format!("{}/api/tags", config.base_url);
+        let rt = tokio::runtime::Handle::current();
+        match rt.block_on(self.client.get(&url).send()) {
+            Ok(resp) => Ok(resp.status().is_success()),
+            Err(_) => Ok(false),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -125,7 +125,7 @@ mod tests {
             base_url: "http://localhost:11434".into(),
         }]);
 
-        let healthy = port.health_check(&WorkerId::new("w-0")).await.unwrap();
+        let healthy = port.health_check(&WorkerId::new("w-0")).unwrap();
         // This test requires Ollama to be running
         assert!(healthy);
     }
@@ -133,7 +133,7 @@ mod tests {
     #[tokio::test]
     async fn health_check_unknown_worker() {
         let port = OllamaWorkerPort::new(vec![]);
-        let result = port.health_check(&WorkerId::new("unknown")).await;
+        let result = port.health_check(&WorkerId::new("unknown"));
         assert!(matches!(result, Err(DomainError::WorkerDispatchFailed { .. })));
     }
 }

@@ -1,5 +1,5 @@
 pub mod infrastructure;
-pub mod integration_tests;
+mod integration_tests;
 pub mod metrics;
 pub mod ports;
 pub mod scheduler;
