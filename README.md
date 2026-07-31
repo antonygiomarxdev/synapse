@@ -1,6 +1,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License">
-  <img src="https://img.shields.io/badge/status-validating%20thesis-orange" alt="Status: Validating thesis">
+  <img src="https://img.shields.io/badge/status-V0--5%20in%20progress-orange" alt="Status: V0-5 in progress">
   <img src="https://img.shields.io/badge/rust-1.97%2B-orange" alt="Rust 1.97+">
   <img src="https://img.shields.io/badge/python-3.12%2B-blue" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/coverage-80%25%2B-brightgreen" alt="Coverage 80%+">
@@ -9,113 +9,141 @@
 
 # Synapse
 
-**Decentralized inference for Mixture-of-Experts models — validating the thesis.**
+**Distributed inference infrastructure for Mixture-of-Experts models.**
 
-> *Can a small network of heterogeneous GPUs complete inference jobs reliably, verifiably, and more affordably than a centralized alternative? We're testing that.*
+MoE models activate only ~2% of their parameters per token. Synapse was built to exploit that — distributing experts across consumer hardware so you can run large models without large hardware.
 
 ---
 
-## Where we are (July 2026)
+## Why Synapse
 
-Synapse has pivoted to **V0: a permissioned async job network for batch inference**. The original P2P vision is deferred until the core coordination is validated. See [ADR-0001](docs/adr/0001-v0-permissioned-async-job-network.md).
+Mixture-of-Experts models (Kimi K3, DeepSeek-V2, Mixtral, Qwen2.5-MoE) are architecturally designed for distribution: each token activates only a handful of independent experts, not the full network. Yet today, running them still requires datacenter-grade GPUs because the inference stack treats them like dense models.
 
-### V0 Progress
+Synapse is built specifically for MoE. It handles expert sharding and routing at the infrastructure level — distributing experts across the hardware you already have instead of cramming the entire model into expensive GPUs.
+
+**Concrete example:** Qwen2.5-MoE 57B has 64 experts, but only 8 activate per token (~7B parameters). That fits in a single RTX 4090 (24GB VRAM, ~$1,600) instead of 4x A100s (320GB, ~$60,000). For batch workloads, the gap widens further — latency tolerance means experts can load from disk on demand, lowering hardware requirements even more.
+
+> **Note:** Synapse is in active development. The current focus is batch inference — the use case where distributed access shines most. Realtime inference follows.
+
+### Who is this for
+
+- **Researchers** processing large datasets who need MoE inference without cloud costs
+- **Indie developers** who want to run large models on hardware they already own
+- **Small teams** without budget for datacenter GPUs but with a 4090 sitting on a desk
+- **Anyone** who needs batch inference on consumer hardware — CI/CD analysis, dataset processing, evaluation pipelines
+
+---
+
+## Supported models
+
+| Model | Experts | Active/Token | Expert Size | Context |
+|---|---|---|---|---|
+| [Kimi K3](https://huggingface.co/moonshotai/Kimi-K3) | 896 | 16 | ~1.5 GB | 1M |
+| [Mixtral 8x7B](https://huggingface.co/mistralai/Mixtral-8x7B-v0.1) | 8 | 2 | ~3.0 GB | 32K |
+| [DeepSeek-V2 Lite](https://huggingface.co/deepseek-ai/DeepSeek-V2-Lite) | 64 | 6 | ~0.15 GB | 131K |
+| [Qwen2.5-MoE](https://huggingface.co/Qwen/Qwen2.5-MoE-57B-A14B) (57B-A14B) | 64 | 8 | ~0.5 GB | 32K |
+
+Models are curated in [`config/models.toml`](config/models.toml). Community proposals welcome via PR.
+
+---
+
+## Two network modes
+
+Synapse supports two modes of distributed inference:
+
+**Speculative Network** (realtime)
+Multiple nodes each run the full model independently with different random seeds. A coordinator votes per token — majority wins. Latency equals single-node latency. Designed for chat, autocomplete, and interactive workloads.
+
+**Network DAG** (batch)
+Each node holds a subset of experts (2-5). Requests flow through an expert graph — only the activated experts process each token. Multiple requests pipeline simultaneously. Designed for batch processing, dataset analysis, and CI/CD workloads.
+
+---
+
+## Current status
+
+### V0: Permissioned async job network
 
 | Issue | Status | Description |
 |---|---|---|
-| #20 | ✅ Closed | Native MoE forward pass — correlation 0.999 with llama.cpp |
-| #21 | ✅ Closed | Job Model + Async API — POST/GET /v1/jobs, 60 tests |
-| #22 | ✅ Closed | Scheduler Mínimo — round-robin, leases (30s), retries (max 3), 44 tests |
-| #23 | ✅ Closed | Multi-Worker + Crash Recovery — OllamaWorkerPort, MetricsCollector, 7 integration tests |
-| #24 | ✅ Closed | Métricas E2E — benchmark binary, scripts/bench.sh, p50/p95/p99 report |
-| #25 | Next | Native MoE Runtime — InferencePort Validation |
+| #20 | ✅ | Native MoE forward pass — correlation 0.999 with llama.cpp |
+| #21 | ✅ | Job Model + Async API — POST/GET /v1/jobs, 60 tests |
+| #22 | ✅ | Scheduler — round-robin, leases (30s), retries (max 3), 44 tests |
+| #23 | ✅ | Multi-Worker + Crash Recovery — OllamaWorkerPort, 7 integration tests |
+| #24 | ✅ | E2E Metrics — benchmark binary, p50/p95/p99 report |
+| #25 | In progress | Native MoE Runtime — InferencePort Validation |
 
-### Validated (pre-pivot)
+### Validated claims
 
 | Claim | Evidence |
 |---|---|
-| Rust ↔ Python worker via Unix socket + protobuf | [Spike](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md) — 100% success, <2ms overhead |
-| Real GPU inference through the pipeline | Qwen3 8B + Ollama — 100% success, 40 tok/s |
-| MoE model through the pipeline | Granite 3.1 MoE 3B — 40 experts, 8 active, 100% success |
-| Native MoE forward pass | Correlation 0.999334 with llama-cpp-python (single token) |
-| Expert sharding | Granite MoE split into 2 shards, loads and generates in Ollama |
-| Coordinator routing | gate_inp weights + hidden state = routing decision, 8/8 experts identical |
+| Native MoE forward pass | [Correlation 0.999](docs/adr/0011-native-moe-runtime.md) with llama-cpp-python |
+| Expert sharding | [Granite MoE split into 2 shards](docs/superpowers/spikes/2026-07-29-expert-sharding-spike.md), loads and generates |
+| GPU inference pipeline | [Qwen3 8B via Ollama](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md) — 40 tok/s |
+| Rust ↔ Python bridge | Unix socket + protobuf — <2ms overhead |
 
 ---
 
-## The vision (where we're going)
+## Architecture
 
-MoE (Mixture-of-Experts) models like Kimi K3, DeepSeek-V2, and Mixtral activate only ~1-2% of their parameters per token. The other 98% sits idle.
-
-**Synapse exploits this.** Instead of cramming the entire model into datacenter GPUs, the swarm distributes experts across consumer hardware. Each node holds a handful of experts. Requests flow through the swarm, activating only the experts they need.
-
-The pitch:
-- No API keys, no rate limits, no regional blocks
-- Any open-weight MoE model
-- Consumer GPUs instead of datacenter H100s
-- Censorship-resistant P2P mesh
-
-But first: **prove the core works.** See [pivot plan](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md).
+```
+                    ┌─────────────┐
+                    │   Client    │
+                    └──────┬──────┘
+                           │
+                    ┌──────▼──────┐
+                    │   Gateway   │  axum HTTP
+                    │   :8000     │  /health, /v1/models
+                    │             │  /v1/jobs, /swagger-ui
+                    └──────┬──────┘
+                           │
+                    ┌──────▼──────┐
+                    │  Scheduler  │  round-robin, leases, retries
+                    └──────┬──────┘
+                           │
+              ┌────────────┼────────────┐
+              │            │            │
+        ┌─────▼─────┐ ┌───▼───┐ ┌─────▼─────┐
+        │  Node A   │ │Node B │ │  Node C   │
+        │ experts:  │ │experts│ │ experts:  │
+        │ 3,17,42   │ │ 8,91  │ │ 5,23,67   │
+        └───────────┘ └───────┘ └───────────┘
+```
 
 ---
 
-## What actually runs today
+## Quick start
 
 ```bash
 git clone https://github.com/antonygiomarxdev/synapse.git
 cd synapse
-
-# Build
 cargo build --release
-
-# Run all tests
-cargo test --lib -- --skip native_moe
-
-# Start the gateway
 cargo run --release
 # → Gateway on http://0.0.0.0:8000
 ```
 
-### What `cargo run` actually does
+### Submit a job
 
-The gateway serves:
-- `GET /health` → `{"status": "ok"}`
-- `GET /v1/models` → model catalog
-- `POST /v1/jobs` → submit async inference job (202 Accepted)
-- `GET /v1/jobs/{id}` → poll job status/result
-- `GET /swagger-ui/` → OpenAPI documentation
+```bash
+# Submit an async inference job
+curl -X POST http://localhost:8000/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"model": "qwen2.5-moe", "prompt": "Explain mixture-of-experts in one paragraph"}'
+# → {"id": "job_abc123", "status": "queued"}
 
-The job API is real — it creates jobs, stores them, and returns status. The scheduler dispatches tasks to workers with round-robin, leases, and retries. Worker integration (actual inference) is the next step (#23).
-
----
-
-## Current architecture
-
+# Poll for the result
+curl http://localhost:8000/v1/jobs/job_abc123
+# → {"id": "job_abc123", "status": "completed", "result": "A Mixture-of-Experts model..."}
 ```
-┌──────────────────────────────────────────────────────────┐
-│              SYNAPSE NODE (Rust binary)                  │
-│                                                          │
-│  ┌──────────────────────┐                                │
-│  │  Gateway (axum)      │  ← /health, /v1/models        │
-│  │  /v1/jobs            │  ← POST (create), GET (poll)  │
-│  │  /swagger-ui/        │  ← OpenAPI docs               │
-│  └──────────┬───────────┘                                │
-│             │                                            │
-│  ┌──────────▼───────────┐                                │
-│  │  Scheduler           │  ← round-robin, leases, retry │
-│  │  decompose → tick    │     30s timeout, max 3 retries│
-│  └──────────┬───────────┘                                │
-│             │                                            │
-│  ┌──────────▼───────────┐                                │
-│  │  WorkerPort (trait)  │  ← dispatch to inference      │
-│  │  MockWorker (V0)     │     Real workers in V0-3      │
-│  └──────────────────────┘                                │
-│                                                          │
-│  ┌──────────────────────┐                                │
-│  │  JobStore / TaskStore│  ← in-memory for V0           │
-│  └──────────────────────┘                                │
-└──────────────────────────────────────────────────────────┘
-```
+
+### API endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/health` | GET | Health check |
+| `/v1/models` | GET | Model catalog |
+| `/v1/jobs` | POST | Submit async inference job (202 Accepted) |
+| `/v1/jobs/{id}` | GET | Poll job status/result |
+| `/swagger-ui/` | GET | OpenAPI documentation |
 
 ---
 
@@ -126,11 +154,10 @@ The job API is real — it creates jobs, stores them, and returns status. The sc
 | Gateway | Rust (axum) | Health, models, job CRUD, OpenAPI/Swagger |
 | Job domain | Rust | JobId, JobStatus, Job aggregate, JobStore port |
 | Scheduler | Rust | TaskId, Task, Scheduler, round-robin, leases, retries |
-| Task domain | Rust | TaskStatus, WorkerId, TaskStore, WorkerPort |
-| Inference runtime | Python | vLLM, Ollama, Mock backends (V0-3 integration) |
-| Identity | Rust | NodeId (SHA-256 of Ed25519) |
-| Model catalog | Rust | ModelId, ModelEntity |
+| Inference runtime | Python | vLLM, Ollama, Mock backends |
 | Native MoE | Rust | GGUF parser, forward pass (correlation 0.999) |
+| Identity | Rust | NodeId (SHA-256 of Ed25519) |
+| Contracts | Solidity | StakeManager (staking, slashing, banning) |
 
 ---
 
@@ -143,9 +170,7 @@ synapse/
 │   │   ├── main.rs          #   Binary entrypoint (axum server)
 │   │   ├── gateway/         #   axum HTTP: api, jobs, catalog, router
 │   │   ├── job/             #   Job domain: JobId, JobStatus, Job, JobStore
-│   │   │   └── infrastructure/  # InMemoryJobStore
 │   │   ├── scheduler/       #   Scheduler: Task, TaskStatus, WorkerPort
-│   │   │   └── infrastructure/  # InMemoryTaskStore, MockWorkerPort
 │   │   ├── identity/        #   NodeId, KeyPair, Node
 │   │   ├── model/           #   ModelId, ExpertId, Catalog
 │   │   ├── native_moe/      #   Native MoE runtime (forward pass validated)
