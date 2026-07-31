@@ -21,6 +21,8 @@ axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.7", features = ["cors", "trace", "auth"] }
 tracing-subscriber = "0.3"
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
 
 # Serialization
 prost = "0.13"
@@ -31,7 +33,7 @@ toml = "0.8"
 # Domain
 uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "2"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
 bytemuck = "1"
 
 # Web3 — alloy replaces deprecated ethers-rs

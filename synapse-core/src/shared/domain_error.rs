@@ -83,6 +83,15 @@ pub enum DomainError {
 
     #[error("insufficient stake for slashing: {available} available, {required} required")]
     InsufficientStake { available: u64, required: u64 },
+
+    #[error("invalid job transition: {from} → {to}")]
+    InvalidJobTransition { from: String, to: String },
+
+    #[error("job not found: {job_id}")]
+    JobNotFound { job_id: String },
+
+    #[error("invalid job: {reason}")]
+    InvalidJob { reason: String },
 }
 
 // SAFETY: DomainError contains f64 only in InvalidTokenLogProb, and
