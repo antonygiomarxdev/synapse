@@ -17,8 +17,8 @@ use crate::shared::DomainError;
 /// retries failed tasks, and completes/fails jobs when all
 /// their tasks reach a terminal state.
 pub struct Scheduler {
-    task_store: Arc<dyn TaskStore>,
-    job_store: Arc<dyn JobStore>,
+    pub task_store: Arc<dyn TaskStore>,
+    pub job_store: Arc<dyn JobStore>,
     worker_port: Arc<dyn WorkerPort>,
     workers: Vec<WorkerInfo>,
     next_worker_idx: std::sync::atomic::AtomicUsize,
@@ -137,7 +137,7 @@ impl Scheduler {
     }
 
     /// Checks all jobs for finalization (all tasks terminal → job complete/failed).
-    fn finalize_jobs(&self, now: DateTime<Utc>) -> Result<(), DomainError> {
+    fn finalize_jobs(&self, _now: DateTime<Utc>) -> Result<(), DomainError> {
         let running_jobs: Vec<Job> = {
             let all_jobs = self.job_store.list()?;
             all_jobs.into_iter().filter(|j| j.status == crate::job::job_status::JobStatus::Running).collect()
