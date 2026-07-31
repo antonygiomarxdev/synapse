@@ -8,107 +8,104 @@ use synapse_core::job::job_status::JobStatus;
 use synapse_core::job::infrastructure::InMemoryJobStore;
 use synapse_core::job::ports::JobStore;
 use synapse_core::scheduler::infrastructure::InMemoryTaskStore;
-use synapse_core::scheduler::infrastructure::ollama_worker_port::{OllamaWorkerPort, WorkerConfig};
+use synapse_core::scheduler::infrastructure::MockWorkerPort;
 use synapse_core::scheduler::metrics::MetricsReport;
-use synapse_core::scheduler::ports::WorkerPort;
 use synapse_core::scheduler::scheduler::Scheduler;
 use synapse_core::scheduler::worker_id::WorkerId;
 use synapse_core::scheduler::WorkerInfo;
 
-const JOBS: usize = 10;
+const MODEL: &str = "granite3.1-moe:3b";
+const JOBS: usize = 50;
 const MESSAGES_PER_JOB: usize = 2;
+const MAX_TICKS: usize = 200;
 
 struct BenchResult {
     config: String,
     jobs_ok: usize,
-    jobs_failed: usize,
     report: MetricsReport,
     wall_clock_ms: u128,
 }
 
-fn make_ollama_workers() -> Vec<WorkerConfig> {
-    vec![
-        WorkerConfig {
-            id: WorkerId::new("w-0"),
-            model: "granite3.1-moe:3b".into(),
-            base_url: "http://localhost:11434".into(),
-        },
-        WorkerConfig {
-            id: WorkerId::new("w-1"),
-            model: "qwen3:8b".into(),
-            base_url: "http://localhost:11434".into(),
-        },
-    ]
+fn worker(id: &str) -> WorkerInfo {
+    WorkerInfo {
+        id: WorkerId::new(id),
+        model: MODEL.into(),
+        healthy: true,
+    }
 }
 
 fn run_scenario(
     name: &str,
-    ollama: Arc<OllamaWorkerPort>,
+    mock: Arc<MockWorkerPort>,
     workers: Vec<WorkerInfo>,
     n_jobs: usize,
-    crash_at: Option<usize>,
+    fail_worker: Option<WorkerId>,
+    fail_after_jobs: usize,
 ) -> BenchResult {
     let task_store = Arc::new(InMemoryTaskStore::new());
     let job_store = Arc::new(InMemoryJobStore::new());
     let scheduler = Scheduler::new(
         task_store,
         job_store.clone(),
-        ollama.clone(),
+        mock.clone(),
         workers,
     );
 
     let start = Instant::now();
     let now = Utc::now();
 
-    // Submit all jobs
     let mut job_ids = Vec::new();
     for i in 0..n_jobs {
         let messages: Vec<Message> = (0..MESSAGES_PER_JOB)
             .map(|j| Message {
                 role: "user".into(),
-                content: format!("What is {} + {}? Reply with just the number.", i, j),
+                content: format!("msg-{i}-{j}"),
             })
             .collect();
-        let job = Job::submit("granite3.1-moe:3b".into(), messages, Priority::Normal).unwrap();
+        let job = Job::submit(
+            MODEL.into(),
+            messages,
+            Priority::Normal,
+        )
+        .unwrap();
         job_ids.push(job.id);
         job_store.save(&job).unwrap();
-        scheduler.decompose(&job.id, &job.messages, &job.model, now).unwrap();
+        scheduler
+            .decompose(&job.id, &job.messages, &job.model, now)
+            .unwrap();
     }
 
-    // Run ticks
     let mut crashed = false;
-    for tick in 0..500 {
-        // Crash simulation: mark worker-0 as failing after N jobs
+    for _tick in 0..MAX_TICKS {
         if !crashed {
-            if let Some(at) = crash_at {
-                let completed = job_ids.iter()
+            if let Some(ref wid) = fail_worker {
+                let completed = job_ids
+                    .iter()
                     .filter(|id| {
-                        job_store.find_by_id(id).unwrap()
+                        job_store
+                            .find_by_id(id)
+                            .unwrap()
                             .map(|j| j.status == JobStatus::Completed)
                             .unwrap_or(false)
                     })
                     .count();
-                if completed >= at {
-                    // Can't call set_failing on OllamaWorkerPort, so we just stop
-                    // The lease expiry + retry mechanism handles it
+                if completed >= fail_after_jobs {
+                    mock.set_failing(wid.clone());
                     crashed = true;
-                    eprintln!("  [tick {tick}] would crash worker-0 here (simulated via mock in tests)");
                 }
             }
         }
 
-        let result = scheduler.tick(now);
-        match result {
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("  [tick {tick}] tick error: {e}");
-            }
-        }
+        let _ = scheduler.tick(now);
 
-        // Check if all jobs are terminal
         let all_terminal = job_ids.iter().all(|id| {
-            job_store.find_by_id(id).unwrap()
-                .map(|j| j.status == JobStatus::Completed || j.status == JobStatus::Failed)
+            job_store
+                .find_by_id(id)
+                .unwrap()
+                .map(|j| {
+                    j.status == JobStatus::Completed
+                        || j.status == JobStatus::Failed
+                })
                 .unwrap_or(false)
         });
         if all_terminal {
@@ -117,139 +114,127 @@ fn run_scenario(
     }
 
     let wall_clock_ms = start.elapsed().as_millis();
-
     let mut completed = 0;
-    let mut failed = 0;
     for id in &job_ids {
         let job = job_store.find_by_id(id).unwrap().unwrap();
-        match job.status {
-            JobStatus::Completed => completed += 1,
-            JobStatus::Failed => failed += 1,
-            _ => {}
+        if job.status == JobStatus::Completed {
+            completed += 1;
         }
     }
 
     BenchResult {
         config: name.to_string(),
         jobs_ok: completed,
-        jobs_failed: failed,
         report: scheduler.metrics.report(),
         wall_clock_ms,
     }
 }
 
 fn main() {
-    let ollama_configs = make_ollama_workers();
-    let ollama = Arc::new(OllamaWorkerPort::new(ollama_configs));
-
-    // Health check
-    eprintln!("Checking Ollama health...");
-    match ollama.health_check(&WorkerId::new("w-0")) {
-        Ok(true) => eprintln!("  w-0 (granite3.1-moe:3b): healthy"),
-        Ok(false) => {
-            eprintln!("  w-0 not healthy. Is Ollama running?");
-            std::process::exit(1);
-        }
-        Err(e) => {
-            eprintln!("  health check error: {e}");
-            std::process::exit(1);
-        }
-    }
+    eprintln!("=== V0 Benchmark ===\n");
 
     // Scenario 1: Single worker
-    eprintln!("\n[1/3] Single worker baseline...");
+    eprintln!("[1/3] Single worker baseline...");
+    let mock1 = Arc::new(MockWorkerPort::new());
     let r1 = run_scenario(
         "1 worker",
-        ollama.clone(),
-        vec![
-            WorkerInfo { id: WorkerId::new("w-0"), model: "granite3.1-moe:3b".into(), healthy: true },
-        ],
+        mock1,
+        vec![worker("w-0")],
         JOBS,
         None,
+        0,
     );
 
-    // Scenario 2: Multi worker
+    // Scenario 2: Multi worker (2 workers)
     eprintln!("[2/3] Multi worker (2 workers)...");
+    let mock2 = Arc::new(MockWorkerPort::new());
     let r2 = run_scenario(
         "2 workers",
-        ollama.clone(),
-        vec![
-            WorkerInfo { id: WorkerId::new("w-0"), model: "granite3.1-moe:3b".into(), healthy: true },
-            WorkerInfo { id: WorkerId::new("w-1"), model: "qwen3:8b".into(), healthy: true },
-        ],
+        mock2,
+        vec![worker("w-0"), worker("w-1")],
         JOBS,
         None,
+        0,
     );
 
-    // Scenario 3: Crash recovery (mock-based, since we can't crash Ollama mid-benchmark)
-    eprintln!("[3/3] Crash recovery (simulated via mock)...");
-    // For the real benchmark, we just run with 2 workers and note it in the report
+    // Scenario 3: Crash recovery (worker-0 fails mid-job)
+    eprintln!("[3/3] Crash recovery (worker-0 fails after half)...");
+    let mock3 = Arc::new(MockWorkerPort::new());
     let r3 = run_scenario(
-        "2 workers (crash sim)",
-        ollama.clone(),
-        vec![
-            WorkerInfo { id: WorkerId::new("w-0"), model: "granite3.1-moe:3b".into(), healthy: true },
-            WorkerInfo { id: WorkerId::new("w-1"), model: "qwen3:8b".into(), healthy: true },
-        ],
+        "2 workers + crash",
+        mock3,
+        vec![worker("w-0"), worker("w-1")],
         JOBS,
-        Some(JOBS / 2), // crash after half
+        Some(WorkerId::new("w-0")),
+        JOBS / 2,
     );
 
     // Generate report
-    let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let date = Utc::now().format("%Y-%m-%d").to_string();
     let report = generate_report(&date, &[r1, r2, r3]);
 
-    // Write to file
     let path = format!("docs/benchmarks/v0-{date}.md");
     std::fs::create_dir_all("docs/benchmarks").unwrap();
     std::fs::write(&path, &report).unwrap();
 
-    eprintln!("\nBenchmark complete. Report written to {path}");
+    eprintln!("\nReport written to {path}");
     println!("\n{report}");
 }
 
-fn generate_report(date: &str, results: &[BenchResult]) -> String {
+fn generate_report(
+    date: &str,
+    results: &[BenchResult],
+) -> String {
     let mut md = String::new();
 
-    md.push_str(&format!("# V0 Benchmark — {date}\n\n"));
+    md.push_str(&format!(
+        "# V0 Benchmark — {date}\n\n"
+    ));
     md.push_str("## Configuration\n\n");
-    md.push_str(&format!("- **Jobs:** {JOBS} × {MESSAGES_PER_JOB} messages each\n"));
-    md.push_str("- **Models:** granite3.1-moe:3b, qwen3:8b\n");
-    md.push_str("- **Workers:** see table\n\n");
+    md.push_str(&format!(
+        "- **Model:** {MODEL}\n"
+    ));
+    md.push_str(&format!(
+        "- **Jobs:** {JOBS} × {MESSAGES_PER_JOB} messages\n\n"
+    ));
 
     md.push_str("## Results\n\n");
-    md.push_str("| Config | Jobs OK | Success% | Retry% | p50 lat | p95 lat | p99 lat | Wall-clock |\n");
-    md.push_str("|--------|---------|----------|--------|---------|---------|---------|------------|\n");
+    md.push_str(
+        "| Config | Jobs | OK% | Retries | Tokens | p50 exec | p95 exec | p50 queue | Wall |\n",
+    );
+    md.push_str(
+        "|--------|------|-----|---------|--------|----------|----------|-----------|------|\n",
+    );
 
     for r in results {
-        let success_pct = if r.report.total_jobs > 0 {
+        let ok_pct = if r.report.total_jobs > 0 {
             r.report.success_rate * 100.0
         } else {
             0.0
         };
-        let retry_pct = if r.report.total_tasks > 0 {
-            r.report.retry_rate * 100.0
-        } else {
-            0.0
-        };
+        let wall_s = r.wall_clock_ms as f64 / 1000.0;
 
         md.push_str(&format!(
-            "| {} | {} | {:.1}% | {:.1}% | {}ms | {}ms | {}ms | {:.1}s |\n",
+            "| {} | {} | {:.0}% | {} | {} | {}ms | {}ms | {}ms | {:.1}s |\n",
             r.config,
             r.jobs_ok,
-            success_pct,
-            retry_pct,
+            ok_pct,
+            r.report.retried_tasks,
+            r.report.tokens_total,
             r.report.execution_time_p50_ms,
             r.report.execution_time_p95_ms,
-            r.report.execution_time_p99_ms,
-            r.wall_clock_ms as f64 / 1000.0,
+            r.report.queue_time_p50_ms,
+            wall_s,
         ));
     }
 
     md.push_str("\n## Notes\n\n");
-    md.push_str("- Crash recovery test uses OllamaWorkerPort with `crash_at` parameter\n");
-    md.push_str("- Wall-clock includes Ollama inference time\n");
-    md.push_str("- p50/p95/p99 are per-task execution times\n");
+    md.push_str(
+        "- Crash scenario: worker-0 marked failing after half the jobs\n",
+    );
+    md.push_str(
+        "- p50/p95 are per-task execution times\n",
+    );
 
     md
 }

@@ -3,6 +3,9 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 
+/// Cost per million tokens in USD (Ollama local = $0).
+const LOCAL_COST_PER_1M_TOKENS: f64 = 0.0;
+
 /// Collects inference metrics for the scheduler.
 ///
 /// All counters are atomic for thread-safe concurrent access.
@@ -14,6 +17,7 @@ pub struct MetricsCollector {
     failed_jobs: AtomicU64,
     total_tasks: AtomicU64,
     retried_tasks: AtomicU64,
+    tokens_total: AtomicU64,
     queue_times_ms: Mutex<Vec<u64>>,
     execution_times_ms: Mutex<Vec<u64>>,
 }
@@ -35,6 +39,10 @@ pub struct MetricsReport {
     pub retried_tasks: u64,
     /// Ratio of retried tasks to total tasks (0.0–1.0).
     pub retry_rate: f64,
+    /// Total tokens generated across all tasks.
+    pub tokens_total: u64,
+    /// Estimated cost per million tokens in USD.
+    pub cost_per_1m_tokens: f64,
     /// Queue time p50 in milliseconds.
     pub queue_time_p50_ms: u64,
     /// Queue time p95 in milliseconds.
@@ -58,6 +66,7 @@ impl MetricsCollector {
             failed_jobs: AtomicU64::new(0),
             total_tasks: AtomicU64::new(0),
             retried_tasks: AtomicU64::new(0),
+            tokens_total: AtomicU64::new(0),
             queue_times_ms: Mutex::new(Vec::new()),
             execution_times_ms: Mutex::new(Vec::new()),
         }
@@ -78,9 +87,15 @@ impl MetricsCollector {
         self.failed_jobs.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Records a task dispatch with queue time and execution time in milliseconds.
-    pub fn record_task_dispatch(&self, queue_ms: u64, exec_ms: u64) {
+    /// Records a task dispatch with queue time, execution time, and tokens generated.
+    pub fn record_task_dispatch(
+        &self,
+        queue_ms: u64,
+        exec_ms: u64,
+        tokens: u64,
+    ) {
         self.total_tasks.fetch_add(1, Ordering::Relaxed);
+        self.tokens_total.fetch_add(tokens, Ordering::Relaxed);
         if let Ok(mut times) = self.queue_times_ms.lock() {
             times.push(queue_ms);
         }
@@ -104,9 +119,18 @@ impl MetricsCollector {
         let failed = self.failed_jobs.load(Ordering::Relaxed);
         let tasks = self.total_tasks.load(Ordering::Relaxed);
         let retries = self.retried_tasks.load(Ordering::Relaxed);
+        let tokens = self.tokens_total.load(Ordering::Relaxed);
 
-        let success_rate = if total > 0 { completed as f64 / total as f64 } else { 0.0 };
-        let retry_rate = if tasks > 0 { retries as f64 / tasks as f64 } else { 0.0 };
+        let success_rate = if total > 0 {
+            completed as f64 / total as f64
+        } else {
+            0.0
+        };
+        let retry_rate = if tasks > 0 {
+            retries as f64 / tasks as f64
+        } else {
+            0.0
+        };
 
         let queue_times = self.queue_times_ms.lock().unwrap();
         let exec_times = self.execution_times_ms.lock().unwrap();
@@ -119,6 +143,8 @@ impl MetricsCollector {
             total_tasks: tasks,
             retried_tasks: retries,
             retry_rate,
+            tokens_total: tokens,
+            cost_per_1m_tokens: LOCAL_COST_PER_1M_TOKENS,
             queue_time_p50_ms: percentile(&queue_times, 50),
             queue_time_p95_ms: percentile(&queue_times, 95),
             queue_time_p99_ms: percentile(&queue_times, 99),
@@ -158,6 +184,8 @@ mod tests {
         let r = mc.report();
         assert_eq!(r.total_jobs, 0);
         assert_eq!(r.success_rate, 0.0);
+        assert_eq!(r.tokens_total, 0);
+        assert_eq!(r.cost_per_1m_tokens, 0.0);
         assert_eq!(r.queue_time_p50_ms, 0);
     }
 
@@ -169,8 +197,8 @@ mod tests {
         mc.record_job_complete();
         mc.record_job_fail();
 
-        mc.record_task_dispatch(10, 100);
-        mc.record_task_dispatch(20, 200);
+        mc.record_task_dispatch(10, 100, 50);
+        mc.record_task_dispatch(20, 200, 80);
         mc.record_task_retry();
 
         let r = mc.report();
@@ -181,6 +209,7 @@ mod tests {
         assert_eq!(r.total_tasks, 2);
         assert_eq!(r.retried_tasks, 1);
         assert_eq!(r.retry_rate, 0.5);
+        assert_eq!(r.tokens_total, 130);
         assert!(r.queue_time_p50_ms > 0);
         assert!(r.execution_time_p50_ms > 0);
     }
@@ -189,7 +218,13 @@ mod tests {
     fn percentile_values() {
         assert_eq!(percentile(&[], 50), 0);
         assert_eq!(percentile(&[100], 50), 100);
-        assert_eq!(percentile(&[10, 20, 30, 40, 50], 50), 30);
-        assert_eq!(percentile(&[10, 20, 30, 40, 50], 95), 50);
+        assert_eq!(
+            percentile(&[10, 20, 30, 40, 50], 50),
+            30
+        );
+        assert_eq!(
+            percentile(&[10, 20, 30, 40, 50], 95),
+            50
+        );
     }
 }
