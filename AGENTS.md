@@ -45,13 +45,19 @@ synapse/
 ├── synapse-core/            # Rust — single crate, single binary
 │   ├── src/
 │   │   ├── main.rs          #   Binary entrypoint (axum + swarm + DHT)
-│   │   ├── gateway/         #   axum HTTP: api, catalog, pricing, router, middleware
+│   │   ├── gateway/         #   axum HTTP: api, jobs, catalog, router
+│   │   ├── job/             #   Job domain: JobId, JobStatus, Job, JobStore
+│   │   │   └── infrastructure/  # InMemoryJobStore
+│   │   ├── scheduler/       #   Scheduler: Task, TaskStatus, WorkerPort
+│   │   │   └── infrastructure/  # InMemoryTaskStore, MockWorkerPort
 │   │   ├── identity/        #   NodeId, KeyPair, Node aggregate
 │   │   ├── model/           #   ModelId, ExpertId, Catalog
-│   │   ├── native_moe/      #   Native MoE runtime (BLOCKED — see below)
+│   │   ├── native_moe/      #   Native MoE runtime (forward pass validated)
 │   │   ├── swarm/           #   Consensus, Speculative engine, DAG engine
 │   │   ├── economic/        #   Reputation, Pricing, Stake management
 │   │   ├── transport/       #   WebRTC, Signalling
+│   │   ├── runtime/         #   InferencePort trait + Unix socket bridge
+│   │   ├── shared/          #   DomainError, DomainEvent
 │   │   └── dht/             #   Kademlia, Expert registry, Bootstrap
 │   └── proto/               #   Protobuf schemas (8 message types)
 ├── synapse-runtime/         # Python — vLLM adapter (subprocess)
@@ -155,9 +161,15 @@ make gauntlet
 | File | Role |
 |---|---|
 | `synapse-core/src/main.rs` | Binary entrypoint — starts axum server |
-| `synapse-core/src/lib.rs` | Library root — declares 7 public modules |
-| `synapse-core/src/gateway/api.rs` | HTTP router builder (`build_router()`) |
-| `synapse-core/src/identity/node_id.rs` | NodeId value object (only implemented domain type so far) |
+| `synapse-core/src/lib.rs` | Library root — declares public modules |
+| `synapse-core/src/gateway/api.rs` | HTTP router builder (`build_router()`) + OpenAPI |
+| `synapse-core/src/gateway/jobs.rs` | Job CRUD handlers + AppState |
+| `synapse-core/src/job/job.rs` | Job aggregate: submit, transition_to, complete, fail |
+| `synapse-core/src/job/ports.rs` | JobStore port trait |
+| `synapse-core/src/scheduler/scheduler.rs` | Scheduler: decompose, tick, round-robin dispatch |
+| `synapse-core/src/scheduler/task.rs` | Task aggregate with leases and retries |
+| `synapse-core/src/scheduler/ports.rs` | TaskStore + WorkerPort port traits |
+| `synapse-core/src/identity/node_id.rs` | NodeId value object |
 | `synapse-core/src/gateway/router.rs` | Chat completions handler (OpenAI-compatible) |
 | `synapse-core/proto/synapse.proto` | Wire protocol — all inter-component messages |
 | `config/models.toml` | Curated model catalog |
