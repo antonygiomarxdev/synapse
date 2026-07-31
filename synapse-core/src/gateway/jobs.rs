@@ -10,11 +10,13 @@ use utoipa::ToSchema;
 use crate::job::job::{Job, Message, Priority};
 use crate::job::job_id::JobId;
 use crate::job::ports::JobStore;
+use crate::scheduler::scheduler::Scheduler;
 
 /// Shared application state injected into handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub job_store: Arc<dyn JobStore>,
+    pub scheduler: Option<Arc<Scheduler>>,
 }
 
 // --- Request types ---
@@ -228,6 +230,7 @@ mod tests {
     fn test_app() -> axum::Router {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
+            scheduler: None,
         };
         axum::Router::new()
             .route("/v1/jobs", axum::routing::post(create_job))
@@ -334,6 +337,7 @@ mod tests {
     async fn get_job_returns_pending_status() {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
+            scheduler: None,
         };
 
         // Create a job first
@@ -406,6 +410,7 @@ mod tests {
     async fn end_to_end_submit_and_poll() {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
+            scheduler: None,
         };
 
         let app = axum::Router::new()
@@ -478,6 +483,7 @@ mod tests {
     async fn create_job_defaults_priority_to_normal() {
         let state = AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
+            scheduler: None,
         };
 
         let app = axum::Router::new()

@@ -6,6 +6,7 @@ pub mod job;
 pub mod model;
 pub mod native_moe;
 pub mod runtime;
+pub mod scheduler;
 pub mod shared;
 pub mod swarm;
 pub mod transport;
