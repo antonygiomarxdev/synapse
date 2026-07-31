@@ -27,8 +27,8 @@ Synapse has pivoted to **V0: a permissioned async job network for batch inferenc
 | #21 | ✅ Closed | Job Model + Async API — POST/GET /v1/jobs, 60 tests |
 | #22 | ✅ Closed | Scheduler Mínimo — round-robin, leases (30s), retries (max 3), 44 tests |
 | #23 | ✅ Closed | Multi-Worker + Crash Recovery — OllamaWorkerPort, MetricsCollector, 7 integration tests |
-| #24 | Next | Métricas E2E |
-| #25 | Planned | Native MoE Runtime — InferencePort Validation |
+| #24 | ✅ Closed | Métricas E2E — benchmark binary, scripts/bench.sh, p50/p95/p99 report |
+| #25 | Next | Native MoE Runtime — InferencePort Validation |
 
 ### Validated (pre-pivot)
 
@@ -201,4 +201,4 @@ Apache 2.0. See [LICENSE](LICENSE).
 
 ---
 
-*Last updated: 2026-07-31. V0-1, V0-2, V0-3 complete with all acceptance criteria verified. Next: V0-4 (Métricas E2E).*
+*Last updated: 2026-07-31. V0-1 through V0-4 complete. Next: V0-5 (Native MoE Runtime — InferencePort Validation).*
