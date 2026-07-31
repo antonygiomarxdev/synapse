@@ -21,9 +21,16 @@ Mixture-of-Experts models (Kimi K3, DeepSeek-V2, Mixtral, Qwen2.5-MoE) are archi
 
 Synapse is built specifically for MoE. It handles expert sharding and routing at the infrastructure level — distributing experts across the hardware you already have instead of cramming the entire model into expensive GPUs.
 
-**The result:** run a 57B-parameter MoE model on consumer GPUs that cost a fraction of a single H100.
+**Concrete example:** Qwen2.5-MoE 57B has 64 experts, but only 8 activate per token (~7B parameters). That fits in a single RTX 4090 (24GB VRAM, ~$1,600) instead of 4x A100s (320GB, ~$60,000). For batch workloads, the gap widens further — latency tolerance means experts can load from disk on demand, lowering hardware requirements even more.
 
 > **Note:** Synapse is in active development. The current focus is batch inference — the use case where distributed access shines most. Realtime inference follows.
+
+### Who is this for
+
+- **Researchers** processing large datasets who need MoE inference without cloud costs
+- **Indie developers** who want to run large models on hardware they already own
+- **Small teams** without budget for datacenter GPUs but with a 4090 sitting on a desk
+- **Anyone** who needs batch inference on consumer hardware — CI/CD analysis, dataset processing, evaluation pipelines
 
 ---
 
@@ -110,9 +117,22 @@ Each node holds a subset of experts (2-5). Requests flow through an expert graph
 git clone https://github.com/antonygiomarxdev/synapse.git
 cd synapse
 cargo build --release
-cargo test --lib -- --skip native_moe
 cargo run --release
 # → Gateway on http://0.0.0.0:8000
+```
+
+### Submit a job
+
+```bash
+# Submit an async inference job
+curl -X POST http://localhost:8000/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"model": "qwen2.5-moe", "prompt": "Explain mixture-of-experts in one paragraph"}'
+# → {"id": "job_abc123", "status": "queued"}
+
+# Poll for the result
+curl http://localhost:8000/v1/jobs/job_abc123
+# → {"id": "job_abc123", "status": "completed", "result": "A Mixture-of-Experts model..."}
 ```
 
 ### API endpoints
