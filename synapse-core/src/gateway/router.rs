@@ -7,49 +7,55 @@ use crate::job::job::{Job, Message as JobMessage, Priority};
 use crate::job::ports::JobStore;
 use crate::scheduler::scheduler::Scheduler;
 
+/// Request body for `POST /v1/chat/completions`.
 #[derive(Deserialize)]
 pub struct ChatRequest {
+    /// Model to use for inference.
     pub model: String,
+    /// Messages in OpenAI format.
     pub messages: Vec<Message>,
+    /// Scheduling priority. Defaults to "normal".
     #[serde(default = "default_priority")]
     pub priority: String,
-    #[serde(default = "default_swarm_size")]
-    pub swarm_size: u32,
 }
 
+/// An OpenAI-compatible message in a chat request.
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct Message {
+    /// Role of the message author.
     pub role: String,
+    /// Content of the message.
     pub content: String,
 }
 
+/// Response for `POST /v1/chat/completions`.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct ChatResponse {
+    /// Unique completion ID.
     pub id: String,
+    /// Object type (always "chat.completion").
     pub object: String,
+    /// Unix timestamp.
     pub created: u64,
+    /// Model used.
     pub model: String,
+    /// Generated choices.
     pub choices: Vec<Choice>,
 }
 
+/// A single completion choice.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct Choice {
+    /// Choice index.
     pub index: u32,
+    /// Generated message.
     pub message: Message,
+    /// Reason generation stopped.
     pub finish_reason: String,
-}
-
-/// Error response body.
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub error: String,
 }
 
 fn default_priority() -> String {
     "normal".into()
-}
-fn default_swarm_size() -> u32 {
-    5
 }
 
 /// Handles OpenAI-compatible chat completion requests.
@@ -59,13 +65,13 @@ fn default_swarm_size() -> u32 {
 pub async fn chat_completions(
     State(state): State<super::jobs::AppState>,
     Json(req): Json<ChatRequest>,
-) -> Result<Json<ChatResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<ChatResponse>, (StatusCode, Json<super::jobs::ErrorResponse>)> {
     let priority = match req.priority.parse::<Priority>() {
         Ok(p) => p,
         Err(e) => {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: format!("invalid priority: {e}") }),
+                Json(super::jobs::ErrorResponse { error: format!("invalid priority: {e}") }),
             ));
         }
     };
@@ -81,7 +87,7 @@ pub async fn chat_completions(
     let job = Job::submit(req.model.clone(), messages, priority).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(super::jobs::ErrorResponse { error: e.to_string() }),
         )
     })?;
 
@@ -89,7 +95,7 @@ pub async fn chat_completions(
     state.job_store.save(&job).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(super::jobs::ErrorResponse { error: e.to_string() }),
         )
     })?;
 
@@ -99,25 +105,26 @@ pub async fn chat_completions(
         let messages = job.messages.clone();
         let model = job.model.clone();
 
-        // Decompose and process
+        // Decompose job into tasks
         let now = chrono::Utc::now();
         scheduler.decompose(&job_id, &messages, &model, now).map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse { error: format!("failed to decompose job: {e}") }),
+                Json(super::jobs::ErrorResponse { error: format!("failed to decompose job: {e}") }),
             )
         })?;
 
         // Process tasks with retry loop
         let max_ticks = 10;
         for _ in 0..max_ticks {
+            let now = chrono::Utc::now(); // Fresh timestamp each tick
             match scheduler.tick(now).await {
                 Ok(0) => break,
                 Ok(_) => {}
                 Err(e) => {
                     return Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(ErrorResponse { error: format!("scheduler error: {e}") }),
+                        Json(super::jobs::ErrorResponse { error: format!("scheduler error: {e}") }),
                     ));
                 }
             }
@@ -132,13 +139,13 @@ pub async fn chat_completions(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse { error: e.to_string() }),
+                Json(super::jobs::ErrorResponse { error: e.to_string() }),
             )
         })?
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse { error: "job not found".into() }),
+                Json(super::jobs::ErrorResponse { error: "job not found".into() }),
             )
         })?;
 
@@ -288,17 +295,7 @@ mod default_tests {
     }
 
     #[test]
-    fn default_swarm_size_is_5() {
-        assert_eq!(default_swarm_size(), 5);
-    }
-
-    #[test]
     fn default_priority_is_not_empty() {
         assert!(!default_priority().is_empty());
-    }
-
-    #[test]
-    fn default_swarm_size_is_nonzero() {
-        assert!(default_swarm_size() > 0);
     }
 }
