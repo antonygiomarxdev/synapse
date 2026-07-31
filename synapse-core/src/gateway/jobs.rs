@@ -146,6 +146,27 @@ pub async fn create_job(
             .into_response();
     }
 
+    // Trigger scheduler to process the job if available
+    if let Some(scheduler) = &state.scheduler {
+        let scheduler = scheduler.clone();
+        let job_id = job.id;
+        let messages = job.messages.clone();
+        let model = job.model.clone();
+
+        tokio::spawn(async move {
+            let now = chrono::Utc::now();
+            if let Err(e) = scheduler.decompose(&job_id, &messages, &model, now) {
+                eprintln!("Failed to decompose job {job_id}: {e}");
+                return;
+            }
+
+            // Process tasks immediately
+            if let Err(e) = scheduler.tick(now).await {
+                eprintln!("Failed to tick scheduler for job {job_id}: {e}");
+            }
+        });
+    }
+
     (
         StatusCode::ACCEPTED,
         Json(CreateJobResponse { job_id: job_id.to_string() }),

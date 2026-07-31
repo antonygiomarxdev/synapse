@@ -6,6 +6,10 @@ use utoipa::OpenApi;
 
 use super::{catalog, jobs, router};
 use crate::job::infrastructure::InMemoryJobStore;
+use crate::scheduler::scheduler::Scheduler;
+use crate::scheduler::infrastructure::{InMemoryTaskStore, OllamaWorkerPort, WorkerConfig};
+use crate::scheduler::task::WorkerInfo;
+use crate::scheduler::worker_id::WorkerId;
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -56,10 +60,37 @@ pub async fn serve_on(listener: tokio::net::TcpListener) {
 }
 
 /// Builds the gateway router with default in-memory state.
+///
+/// Creates a scheduler with an OllamaWorkerPort connected to localhost:11434.
+/// Uses granite3.1-moe:3b as the default model.
 pub fn build_router() -> Router {
+    let job_store = Arc::new(InMemoryJobStore::new());
+    let task_store = Arc::new(InMemoryTaskStore::new());
+
+    // Create Ollama worker
+    let worker_id = WorkerId::new("ollama-0");
+    let ollama_config = WorkerConfig {
+        id: worker_id.clone(),
+        model: "granite3.1-moe:3b".to_string(),
+        base_url: "http://localhost:11434".to_string(),
+    };
+    let worker_port = Arc::new(OllamaWorkerPort::new(vec![ollama_config]));
+    let workers = vec![WorkerInfo {
+        id: worker_id,
+        model: "granite3.1-moe:3b".to_string(),
+        healthy: true,
+    }];
+
+    let scheduler = Arc::new(Scheduler::new(
+        task_store,
+        job_store.clone(),
+        worker_port,
+        workers,
+    ));
+
     let state = jobs::AppState {
-        job_store: Arc::new(InMemoryJobStore::new()),
-        scheduler: None,
+        job_store,
+        scheduler: Some(scheduler),
     };
     build_router_with_state(state)
 }
