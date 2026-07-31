@@ -11,6 +11,36 @@ use crate::scheduler::infrastructure::{InMemoryTaskStore, OllamaWorkerPort, Work
 use crate::scheduler::task::WorkerInfo;
 use crate::scheduler::worker_id::WorkerId;
 
+/// Default Ollama endpoint.
+pub const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
+
+/// Default model for inference.
+pub const DEFAULT_MODEL: &str = "granite3.1-moe:3b";
+
+/// Default worker ID.
+pub const DEFAULT_WORKER_ID: &str = "ollama-0";
+
+/// Configuration for the gateway.
+#[derive(Debug, Clone)]
+pub struct GatewayConfig {
+    /// Ollama endpoint URL.
+    pub ollama_url: String,
+    /// Model to use for inference.
+    pub model: String,
+    /// Worker ID.
+    pub worker_id: String,
+}
+
+impl Default for GatewayConfig {
+    fn default() -> Self {
+        Self {
+            ollama_url: DEFAULT_OLLAMA_URL.to_string(),
+            model: DEFAULT_MODEL.to_string(),
+            worker_id: DEFAULT_WORKER_ID.to_string(),
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct HealthResponse {
     status: &'static str,
@@ -46,7 +76,7 @@ pub const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8000";
 pub async fn serve(bind_addr: &str) {
     let listener =
         tokio::net::TcpListener::bind(bind_addr).await.expect("failed to bind TCP listener");
-    println!("Synapse Gateway listening on http://{bind_addr}");
+    tracing::info!("Synapse Gateway listening on http://{bind_addr}");
     serve_on(listener).await;
 }
 
@@ -59,25 +89,34 @@ pub async fn serve_on(listener: tokio::net::TcpListener) {
     axum::serve(listener, app).await.unwrap();
 }
 
-/// Builds the gateway router with default in-memory state.
+/// Builds the gateway router with default configuration.
 ///
-/// Creates a scheduler with an OllamaWorkerPort connected to localhost:11434.
-/// Uses granite3.1-moe:3b as the default model.
+/// Creates a scheduler with an OllamaWorkerPort using default settings.
+/// Use [`build_router_with_config`] for custom configuration.
 pub fn build_router() -> Router {
+    build_router_with_config(GatewayConfig::default())
+}
+
+/// Builds the gateway router with custom configuration.
+///
+/// Creates a scheduler with an OllamaWorkerPort connected to the specified
+/// Ollama endpoint. The scheduler processes jobs asynchronously using JoinSet
+/// for concurrent task dispatch.
+pub fn build_router_with_config(config: GatewayConfig) -> Router {
     let job_store = Arc::new(InMemoryJobStore::new());
     let task_store = Arc::new(InMemoryTaskStore::new());
 
     // Create Ollama worker
-    let worker_id = WorkerId::new("ollama-0");
+    let worker_id = WorkerId::new(&config.worker_id);
     let ollama_config = WorkerConfig {
         id: worker_id.clone(),
-        model: "granite3.1-moe:3b".to_string(),
-        base_url: "http://localhost:11434".to_string(),
+        model: config.model.clone(),
+        base_url: config.ollama_url.clone(),
     };
     let worker_port = Arc::new(OllamaWorkerPort::new(vec![ollama_config]));
     let workers = vec![WorkerInfo {
         id: worker_id,
-        model: "granite3.1-moe:3b".to_string(),
+        model: config.model,
         healthy: true,
     }];
 
