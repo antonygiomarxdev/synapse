@@ -1,4 +1,4 @@
-# Next Session Context: V0 Complete — V1 Roadmap Charted
+# Next Session Context: V1 Core Complete
 
 ## Quick Start
 
@@ -6,70 +6,40 @@
 cd /home/ksante/dev/synapse
 git checkout main && git pull
 cargo test --lib -- --skip native_moe --skip health_check_localhost
+cargo test --test e2e
 ```
 
 ## Current State
 
-**V0 is complete.** The core thesis is proven: distributed MoE expert inference produces identical results to monolithic execution.
+**V1 core is complete.** The gateway, scheduler, workers, observability, and E2E tests are all working.
 
-**V1 Roadmap is charted.** Wayfinder map created at #42 with 14 tickets.
+### V1 Summary
 
-### V0 Summary
+| Issue | Status | Description | PR |
+|-------|--------|-------------|-----|
+| #49 | ✅ | Gateway→Scheduler→Worker pipeline | #57 |
+| #50 | ✅ | TCP transport for multi-machine | #61 |
+| #51 | ✅ | /v1/chat/completions real routing | #58 |
+| #52 | ✅ | Observability (metrics + logging) | #62 |
+| #54 | ✅ | Multi-token generation | #59 |
+| #55 | ✅ | E2E integration tests | #63 |
+| #56 | ✅ | Deployment guide | #63 |
 
-| Issue | Status | Description |
-|-------|--------|-------------|
-| #20 | ✅ | Native MoE forward pass — correlation 0.999 |
-| #21 | ✅ | Job Model + Async API |
-| #22 | ✅ | Scheduler Mínimo |
-| #23 | ✅ | Multi-Worker + Crash Recovery |
-| #24 | ✅ | Métricas E2E + Benchmark |
-| #25 | ✅ | Distributed Expert Inference — thesis proven |
+### What's Working
 
-### Benchmark Results
+- **Gateway**: axum HTTP server with OpenAI-compatible endpoints
+- **Scheduler**: async scheduler with JoinSet for concurrent dispatch
+- **Workers**: expert workers that load GGUF and serve FFN requests
+- **TCP Transport**: multi-machine deployment via TCP
+- **Observability**: Prometheus metrics endpoint
+- **E2E Tests**: 8 integration tests covering full lifecycle
 
-| Config | Wall (ms) | Speedup | Cosine sim |
-|--------|-----------|---------|------------|
-| Monolithic | 1264 | 1.00x | 1.000000 |
-| 2 workers | 936 | 1.35x | 1.000000 |
-| 4 workers | 885 | 1.43x | 1.000000 |
+### What's Pending
 
-## V1 Roadmap (Wayfinder Map #42)
-
-**Destination:** Synapse Core V1 — open source distributed MoE inference, Linux+NVIDIA first, designed to scale.
-
-**Constraints:**
-- Linux first, cross-platform in V2+
-- NVIDIA (CUDA) first, cross-GPU in V2+
-- MoE models only
-- Apache 2.0 license
-
-### Tickets
-
-**Research (unblocks decisions):**
-- #43: What do similar projects do? (Ollama, vLLM, llama.cpp, Petals)
-
-**Decisions (blocked by #43):**
-- #44: Installation strategy (cargo vs brew vs docker)
-- #45: Networking strategy (TCP vs libp2p vs HTTP)
-- #46: Model formats and supported models
-- #47: Observability strategy (logging vs metrics vs traces)
-- #48: Storage strategy (SQLite vs file vs RocksDB)
-
-**Implementation (blocked by decisions):**
-- #49: Gateway→Scheduler→Worker pipeline
-- #50: TCP transport for multi-machine
-- #51: /v1/chat/completions real routing
-- #52: Observability (metrics + logging)
-- #53: Persistent storage
-- #54: Multi-token generation
-- #55: E2E integration tests
-- #56: Deployment guide
-
-### Frontier (takeable now)
-
-**#43 — Research: What do similar projects do?**
-
-This is the first ticket to resolve. It unblocks all decision tickets.
+- **#53**: Persistent storage (Turso/libSQL)
+- **#60**: KV cache optimization
+- **#62**: TLS/encryption
+- **#63**: Authentication
 
 ## Architecture
 
@@ -89,22 +59,24 @@ Worker A  Worker B  Worker C
 
 | File | Role |
 |------|------|
-| `native_moe/expert_shard.rs` | Per-expert GGUF loader |
-| `native_moe/expert_worker_client.rs` | HTTP client for remote FFN |
-| `native_moe/distributed_forward.rs` | Distributed inference orchestrator |
-| `native_moe/forward.rs` | Monolithic forward pass |
-| `bin/expert_worker.rs` | Expert worker HTTP server |
-| `bin/bench_distributed.rs` | Distributed vs monolithic benchmark |
+| `gateway/api.rs` | HTTP router builder |
+| `gateway/jobs.rs` | Job CRUD handlers |
+| `gateway/router.rs` | Chat completions handler |
 | `scheduler/scheduler.rs` | Async scheduler with JoinSet |
-| `gateway/jobs.rs` | HTTP handlers + AppState |
+| `scheduler/metrics.rs` | MetricsCollector with Prometheus export |
+| `transport/tcp.rs` | TCP transport for multi-machine |
+| `native_moe/generate.rs` | Multi-token generation |
+| `tests/e2e.rs` | E2E integration tests |
+| `docs/deployment.md` | Deployment guide |
 
 ## Test Counts
 
 - Job module: 52 tests
 - Scheduler module: 48 tests
-- Gateway: 14 tests
+- Gateway: 25 tests
+- E2E: 8 tests
 - Other: 243 tests
-- **Total: 357 tests passing**
+- **Total: 376 tests passing**
 
 ## Environment
 
