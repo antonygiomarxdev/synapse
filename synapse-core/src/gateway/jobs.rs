@@ -148,6 +148,9 @@ pub async fn create_job(
             .into_response();
     }
 
+    // Record job submission
+    state.metrics.record_job_submitted();
+
     // Trigger scheduler to process the job if available.
     //
     // Spawns a background task that:
@@ -162,6 +165,7 @@ pub async fn create_job(
         let job_id = job.id;
         let messages = job.messages.clone();
         let model = job.model.clone();
+        let metrics = state.metrics.clone();
 
         tokio::spawn(async move {
             let now = chrono::Utc::now();
@@ -173,8 +177,12 @@ pub async fn create_job(
                 if let Err(e2) = scheduler.job_store.fail(&job_id, e.to_string()) {
                     tracing::error!(job_id = %job_id, error = %e2, "Failed to mark job as failed");
                 }
+                metrics.record_job_failed();
                 return;
             }
+
+            // Record task dispatch
+            metrics.record_task_dispatched();
 
             // Process tasks with retry loop
             let max_ticks = 10; // Prevent infinite loops
@@ -187,6 +195,7 @@ pub async fn create_job(
                     }
                     Ok(processed) => {
                         tracing::debug!(job_id = %job_id, tick = tick_num, tasks = processed, "Processed tasks");
+                        metrics.record_task_completed();
                     }
                     Err(e) => {
                         tracing::error!(job_id = %job_id, tick = tick_num, error = %e, "Scheduler tick failed");
@@ -194,6 +203,8 @@ pub async fn create_job(
                         if let Err(e2) = scheduler.job_store.fail(&job_id, e.to_string()) {
                             tracing::error!(job_id = %job_id, error = %e2, "Failed to mark job as failed");
                         }
+                        metrics.record_job_failed();
+                        metrics.record_task_failed();
                         return;
                     }
                 }
@@ -203,6 +214,7 @@ pub async fn create_job(
             }
 
             tracing::info!(job_id = %job_id, "Job processing completed");
+            metrics.record_job_completed();
         });
     }
 

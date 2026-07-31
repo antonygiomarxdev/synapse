@@ -145,6 +145,7 @@ pub fn build_router_with_state(state: jobs::AppState) -> Router {
         .route("/v1/chat/completions", axum::routing::post(router::chat_completions))
         .route("/v1/jobs", axum::routing::post(jobs::create_job))
         .route("/v1/jobs/{id}", axum::routing::get(jobs::get_job))
+        .route("/metrics", get(router::metrics))
         .merge(utoipa_swagger_ui::SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi))
         .with_state(state)
 }
