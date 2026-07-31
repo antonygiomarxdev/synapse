@@ -1,4 +1,4 @@
-# Next Session Context: V0 Complete — Distributed MoE Inference Proven
+# Next Session Context: V0 Complete — V1 Roadmap Charted
 
 ## Quick Start
 
@@ -12,30 +12,18 @@ cargo test --lib -- --skip native_moe --skip health_check_localhost
 
 **V0 is complete.** The core thesis is proven: distributed MoE expert inference produces identical results to monolithic execution.
 
-### What was built
+**V1 Roadmap is charted.** Wayfinder map created at #42 with 14 tickets.
 
-**V0-1: ✅ Job Model + Async API**
-- POST /v1/jobs → 202, GET /v1/jobs/{id} → status/result
-- OpenAPI spec, Swagger UI
+### V0 Summary
 
-**V0-2: ✅ Scheduler Mínimo**
-- Async scheduler with JoinSet for concurrent dispatch
-- Round-robin, leases (30s), retries (max 3)
-
-**V0-3: ✅ Multi-Worker + Crash Recovery**
-- OllamaWorkerPort (HTTP to Ollama)
-- MetricsCollector (jobs, tasks, retries, latencies)
-- Crash recovery <30s wall-clock
-
-**V0-4: ✅ Métricas E2E + Benchmark**
-- Benchmark binary with p50/p95/p99 latencies
-- Scripts/bench.sh for reproducible runs
-
-**V0-5: ✅ Distributed Expert Inference**
-- Per-expert GGUF loader (expert_shard.rs)
-- Expert worker binary (HTTP server, loads 32 layers)
-- Distributed forward pass (coordinator + workers)
-- **Cosine similarity: 1.000000** (bit-identical to monolithic)
+| Issue | Status | Description |
+|-------|--------|-------------|
+| #20 | ✅ | Native MoE forward pass — correlation 0.999 |
+| #21 | ✅ | Job Model + Async API |
+| #22 | ✅ | Scheduler Mínimo |
+| #23 | ✅ | Multi-Worker + Crash Recovery |
+| #24 | ✅ | Métricas E2E + Benchmark |
+| #25 | ✅ | Distributed Expert Inference — thesis proven |
 
 ### Benchmark Results
 
@@ -44,6 +32,44 @@ cargo test --lib -- --skip native_moe --skip health_check_localhost
 | Monolithic | 1264 | 1.00x | 1.000000 |
 | 2 workers | 936 | 1.35x | 1.000000 |
 | 4 workers | 885 | 1.43x | 1.000000 |
+
+## V1 Roadmap (Wayfinder Map #42)
+
+**Destination:** Synapse Core V1 — open source distributed MoE inference, Linux+NVIDIA first, designed to scale.
+
+**Constraints:**
+- Linux first, cross-platform in V2+
+- NVIDIA (CUDA) first, cross-GPU in V2+
+- MoE models only
+- Apache 2.0 license
+
+### Tickets
+
+**Research (unblocks decisions):**
+- #43: What do similar projects do? (Ollama, vLLM, llama.cpp, Petals)
+
+**Decisions (blocked by #43):**
+- #44: Installation strategy (cargo vs brew vs docker)
+- #45: Networking strategy (TCP vs libp2p vs HTTP)
+- #46: Model formats and supported models
+- #47: Observability strategy (logging vs metrics vs traces)
+- #48: Storage strategy (SQLite vs file vs RocksDB)
+
+**Implementation (blocked by decisions):**
+- #49: Gateway→Scheduler→Worker pipeline
+- #50: TCP transport for multi-machine
+- #51: /v1/chat/completions real routing
+- #52: Observability (metrics + logging)
+- #53: Persistent storage
+- #54: Multi-token generation
+- #55: E2E integration tests
+- #56: Deployment guide
+
+### Frontier (takeable now)
+
+**#43 — Research: What do similar projects do?**
+
+This is the first ticket to resolve. It unblocks all decision tickets.
 
 ## Architecture
 
@@ -58,8 +84,6 @@ Worker A  Worker B  Worker C
 (experts   (experts   (experts
  0-19)     20-39)     varies)
 ```
-
-**Coordinator** runs attention locally (32 layers), dispatches expert FFN to remote workers. Workers load only their assigned experts from GGUF.
 
 ## Key Files
 
@@ -81,25 +105,6 @@ Worker A  Worker B  Worker C
 - Gateway: 14 tests
 - Other: 243 tests
 - **Total: 357 tests passing**
-
-## What's Next
-
-### Short term
-- Integrate distributed inference with async scheduler for production
-- Test with larger models (Mixtral, DeepSeek)
-- Test with multiple tokens (full prompt, not just single token)
-- Test on multiple machines (not just multiple processes)
-
-### Medium term
-- Dynamic expert loading (load on demand, not all at startup)
-- Expert caching (keep hot experts in memory)
-- Load balancing across workers
-- Web UI for monitoring
-
-### Long term
-- P2P expert discovery (DHT)
-- Economic incentives (staking, slashing)
-- Realtime inference mode (speculative network)
 
 ## Environment
 
