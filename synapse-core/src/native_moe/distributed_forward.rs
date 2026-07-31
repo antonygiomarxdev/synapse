@@ -7,8 +7,10 @@
 use std::collections::HashMap;
 
 use super::expert_worker_client::ExpertWorkerClient;
-use super::forward::{self, ForwardOutput};
-use super::gguf::GgufFile;
+use super::forward::{
+    combine_ffn_residual, compute_logits, forward_layer_attention,
+    ForwardOutput,
+};
 use super::model::{MoeConfig, MoeModel};
 
 /// Configuration for a remote expert worker.
@@ -32,10 +34,7 @@ pub struct DistributedModel {
 impl DistributedModel {
     /// Create a distributed model from a coordinator model (with routing
     /// weights but no expert FFN weights) and a list of worker configs.
-    pub fn new(
-        model: MoeModel,
-        worker_configs: &[WorkerConfig],
-    ) -> Self {
+    pub fn new(model: MoeModel, worker_configs: &[WorkerConfig]) -> Self {
         let workers: Vec<ExpertWorkerClient> = worker_configs
             .iter()
             .map(|c| ExpertWorkerClient::new(c.url.clone()))
@@ -66,65 +65,144 @@ impl DistributedModel {
         &self,
         prompt_tokens: &[u32],
     ) -> ForwardOutput {
-        // Use the monolithic forward for now, but with expert FFN
-        // dispatched to remote workers
-        //
-        // For V0: we run the full forward pass but intercept expert_ffn
-        // calls to dispatch to workers. Since the existing forward.rs
-        // is not easily interceptable, we use a simpler approach:
-        // run the monolithic forward to get routing decisions, then
-        // verify the distributed FFN produces the same output.
-        forward::forward(&self.model, prompt_tokens)
+        let d_model = self.model.config.d_model as usize;
+        let d_ff = self.model.config.d_ff as usize;
+        let residual_scale = self.model.config.residual_scale;
+
+        // Phase 0: Embedding lookup (local)
+        let mut hidden: Vec<Vec<f32>> =
+            if let Some(ref embd) = self.model.token_embd {
+                let d = embd.shape[0] as usize;
+                let shape_vocab = embd.shape[1] as usize;
+                prompt_tokens
+                    .iter()
+                    .map(|&tid| {
+                        let t = tid as usize % shape_vocab;
+                        (0..d)
+                            .map(|dim| {
+                                self.model.config.embedding_scale
+                                    * embd.data[t * d + dim]
+                            })
+                            .collect()
+                    })
+                    .collect()
+            } else {
+                vec![vec![0.0f32; d_model]; prompt_tokens.len()]
+            };
+
+        let mut routes = Vec::new();
+
+        // Phase 1: Per-layer distributed forward
+        for layer_idx in 0..self.model.layers.len() {
+            // Step 1: Run attention + routing locally
+            let attn_out =
+                forward_layer_attention(&self.model, layer_idx, hidden);
+
+            routes.push(attn_out.route.clone());
+
+            // Normalize scores before dispatching to workers
+            let score_sum: f32 = attn_out.route.2.iter().sum();
+            let norm_scores: Vec<f32> = if score_sum > 1e-6 {
+                attn_out.route.2.iter().map(|s| s / score_sum).collect()
+            } else {
+                attn_out.route.2.clone()
+            };
+
+            // Step 2: Dispatch expert FFN to remote workers
+            let ffn_output = self
+                .dispatch_ffn(
+                    layer_idx,
+                    &attn_out.ffn_normed,
+                    &attn_out.route.1,
+                    &norm_scores,
+                    d_ff,
+                )
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("  [WARN] remote FFN failed: {e}");
+                    vec![vec![0.0f32; d_model]; prompt_tokens.len()]
+                });
+
+            // Step 3: Combine FFN output with residual
+            hidden = combine_ffn_residual(
+                &attn_out.residual2,
+                &ffn_output,
+                residual_scale,
+            );
+        }
+
+        // Phase 2: Output projection (local)
+        let logits = compute_logits(&self.model, &hidden);
+
+        ForwardOutput { logits, routes }
     }
 
-    /// Run expert FFN on a remote worker.
-    pub async fn remote_expert_ffn(
+    /// Dispatch expert FFN to remote workers for all tokens.
+    ///
+    /// Groups experts by worker, dispatches concurrently via JoinSet.
+    async fn dispatch_ffn(
         &self,
-        hidden: &[f32],
+        layer_idx: usize,
+        hidden: &[Vec<f32>],
         expert_ids: &[u32],
         expert_scores: &[f32],
-    ) -> Result<Vec<f32>, String> {
-        // Group expert IDs by worker
-        let mut worker_experts: HashMap<usize, Vec<(u32, f32)>> =
-            HashMap::new();
+        _d_ff: usize,
+    ) -> Result<Vec<Vec<f32>>, String> {
+        let n_tokens = hidden.len();
+        let d_model = hidden[0].len();
 
-        for (i, &eid) in expert_ids.iter().enumerate() {
-            let wid = self
-                .expert_map
-                .get(&(eid as usize))
-                .ok_or(format!("expert {eid} not mapped to any worker"))?;
-            worker_experts
-                .entry(*wid)
-                .or_default()
-                .push((eid, expert_scores[i]));
-        }
-
-        // Dispatch to workers concurrently
         let mut join_set = tokio::task::JoinSet::new();
 
-        for (wid, experts) in worker_experts {
-            let client = self.workers[wid].clone();
-            let hidden = hidden.to_vec();
-            let ids: Vec<u32> = experts.iter().map(|(id, _)| *id).collect();
-            let scores: Vec<f32> =
-                experts.iter().map(|(_, s)| *s).collect();
+        for t in 0..n_tokens {
+            // Group experts by worker for this token
+            let mut worker_experts: HashMap<usize, Vec<(u32, f32)>> =
+                HashMap::new();
 
-            join_set.spawn(async move {
-                client.compute_ffn(hidden, ids, scores).await
-            });
+            for (i, &eid) in expert_ids.iter().enumerate() {
+                let wid = self
+                    .expert_map
+                    .get(&(eid as usize))
+                    .ok_or(format!(
+                        "expert {eid} not mapped to any worker"
+                    ))?;
+                worker_experts
+                    .entry(*wid)
+                    .or_default()
+                    .push((eid, expert_scores[i]));
+            }
+
+            for (wid, experts) in worker_experts {
+                let client = self.workers[wid].clone();
+                let hidden_vec = hidden[t].clone();
+                let ids: Vec<u32> =
+                    experts.iter().map(|(id, _)| *id).collect();
+                let scores: Vec<f32> =
+                    experts.iter().map(|(_, s)| *s).collect();
+
+                join_set.spawn(async move {
+                    let result = client
+                        .compute_ffn(layer_idx, hidden_vec, ids, scores)
+                        .await;
+                    (t, result)
+                });
+            }
         }
 
-        // Combine outputs from all workers
-        let mut output = vec![0.0f32; hidden.len()];
+        // Collect results from all workers
+        let mut output = vec![vec![0.0f32; d_model]; n_tokens];
         while let Some(result) = join_set.join_next().await {
             match result {
-                Ok(Ok(worker_output)) => {
-                    for (i, v) in worker_output.iter().enumerate() {
-                        output[i] += v;
+                Ok((t, Ok(worker_output))) => {
+                    for d in 0..d_model.min(worker_output.len()) {
+                        output[t][d] += worker_output[d];
                     }
                 }
-                Ok(Err(e)) => return Err(format!("worker error: {e}")),
-                Err(e) => return Err(format!("join error: {e}")),
+                Ok((_, Err(e))) => {
+                    return Err(format!("worker error: {e}"));
+                }
+                Err(e) => {
+                    return Err(format!("join error: {e}"));
+                }
             }
         }
 
@@ -133,11 +211,9 @@ impl DistributedModel {
 }
 
 /// Load a coordinator model (attention + routing only, no expert weights).
-///
-/// Uses `load_routing()` from model.rs which loads embedding, norms,
-/// attention weights, and gate_inp — everything except the heavy
-/// expert FFN tensors.
-pub fn load_coordinator(path: &std::path::Path) -> Result<MoeModel, String> {
+pub fn load_coordinator(
+    path: &std::path::Path,
+) -> Result<MoeModel, String> {
     MoeModel::load_routing(path)
 }
 
@@ -158,7 +234,6 @@ mod tests {
             },
         ];
 
-        // Create a dummy model for testing the map
         let model = MoeModel {
             config: MoeConfig {
                 architecture: "test".into(),

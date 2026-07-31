@@ -127,6 +127,10 @@ impl ExpertShard {
     ///
     /// Same math as `expert_ffn` in forward.rs but uses local shard
     /// weights with global-to-local index mapping.
+    ///
+    /// IMPORTANT: scores must be pre-normalized by the caller.
+    /// This function does NOT normalize scores — it trusts the caller
+    /// to provide already-normalized weights (sum ≈ 1.0).
     pub fn expert_ffn(
         &self,
         hidden: &[f32],
@@ -136,12 +140,8 @@ impl ExpertShard {
         let d_model = self.d_model;
         let d_ff = self.d_ff;
 
-        let score_sum: f32 = expert_scores.iter().sum();
-        let norm_scores: Vec<f32> = if score_sum > 1e-6 {
-            expert_scores.iter().map(|s| s / score_sum).collect()
-        } else {
-            expert_scores.to_vec()
-        };
+        // Use scores as-is — caller is responsible for normalization
+        let norm_scores = expert_scores;
 
         let mut output = vec![0.0f32; d_model];
 

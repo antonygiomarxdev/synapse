@@ -417,7 +417,7 @@ fn attention(
 ///
 /// Weight layout: gate_exps [d_model, d_ff, n_experts], up_exps [d_model, d_ff, n_experts],
 /// down_exps [d_ff, d_model, n_experts] — row-major in GGUF.
-fn expert_ffn(
+pub fn expert_ffn(
     hidden: &[Vec<f32>],
     gate_exps: &Tensor,
     up_exps: &Tensor,
@@ -508,7 +508,7 @@ fn expert_ffn(
 
 /// Compute expert scores for all tokens in a layer.
 /// hidden[t] @ gate_inp^T → scores[n_experts] → softmax → top-k indices.
-fn route_experts(layer: &MoeLayer, hidden: &[Vec<f32>]) -> (usize, Vec<u32>, Vec<f32>) {
+pub fn route_experts(layer: &MoeLayer, hidden: &[Vec<f32>]) -> (usize, Vec<u32>, Vec<f32>) {
     let d_model = layer.gate_inp.shape[0] as usize;
     let n_experts = layer.gate_inp.shape[1] as usize;
     let k = 8; // top-k experts per token
@@ -543,7 +543,7 @@ fn route_experts(layer: &MoeLayer, hidden: &[Vec<f32>]) -> (usize, Vec<u32>, Vec
 }
 
 /// RMS normalization: y = x / sqrt(mean(x^2) + eps) * weight
-fn rms_norm(x: &[f32], weight: &[f32]) -> Vec<f32> {
+pub fn rms_norm(x: &[f32], weight: &[f32]) -> Vec<f32> {
     let d = x.len();
     let eps = 1e-6_f32;
 
@@ -558,11 +558,148 @@ fn rms_norm(x: &[f32], weight: &[f32]) -> Vec<f32> {
 }
 
 /// Softmax over a slice.
-fn softmax(logits: &[f32]) -> Vec<f32> {
+pub fn softmax(logits: &[f32]) -> Vec<f32> {
     let max = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let exp: Vec<f32> = logits.iter().map(|&x| (x - max).exp()).collect();
     let sum: f32 = exp.iter().sum();
     exp.iter().map(|&x| x / sum).collect()
+}
+
+/// Result of running attention + routing for one layer.
+#[derive(Debug, Clone)]
+pub struct LayerAttentionOutput {
+    /// Hidden state after attention + residual: [n_tokens, d_model]
+    pub hidden: Vec<Vec<f32>>,
+    /// Hidden state after FFN norm (before routing): [n_tokens, d_model]
+    pub ffn_normed: Vec<Vec<f32>>,
+    /// Residual before FFN: [n_tokens, d_model]
+    pub residual2: Vec<Vec<f32>>,
+    /// Expert routing decision: (layer_idx, expert_ids, expert_scores)
+    pub route: (usize, Vec<u32>, Vec<f32>),
+}
+
+/// Run one layer's attention + routing (no FFN).
+///
+/// This is the "coordinator" step: runs locally, returns the hidden
+/// state that needs to be sent to expert workers for FFN computation.
+pub fn forward_layer_attention(
+    model: &MoeModel,
+    layer_idx: usize,
+    mut hidden: Vec<Vec<f32>>,
+) -> LayerAttentionOutput {
+    let d_model = model.config.d_model as usize;
+    let n_tokens = hidden.len();
+    let layer = &model.layers[layer_idx];
+
+    // Phase 1a: RMS norm → attention
+    let residual = hidden.clone();
+
+    if let Some(ref attn_norm) = layer.attn_norm {
+        for t in 0..n_tokens {
+            hidden[t] = rms_norm(&hidden[t], &attn_norm.data);
+        }
+    }
+
+    if let (Some(wq), Some(wk), Some(wv), Some(wo)) =
+        (&layer.attn_q, &layer.attn_k, &layer.attn_v, &layer.attn_output)
+    {
+        let attn_out = attention(
+            &hidden,
+            wq,
+            wk,
+            wv,
+            wo,
+            model.config.n_heads as usize,
+            model.config.n_kv_heads as usize,
+            n_tokens,
+            model.config.rope_theta,
+            model.config.attention_scale,
+            false,
+        );
+
+        for t in 0..n_tokens {
+            for d in 0..d_model {
+                hidden[t][d] =
+                    residual[t][d] + model.config.residual_scale * attn_out[t][d];
+            }
+        }
+    } else {
+        for t in 0..n_tokens {
+            hidden[t] = residual[t].clone();
+        }
+    }
+
+    // Phase 1b: FFN norm → routing
+    let residual2 = hidden.clone();
+    if let Some(ref ffn_norm) = layer.ffn_norm {
+        for t in 0..n_tokens {
+            hidden[t] = rms_norm(&hidden[t], &ffn_norm.data);
+        }
+    }
+
+    let route = route_experts(layer, &hidden);
+
+    let ffn_normed = hidden.clone();
+    LayerAttentionOutput {
+        hidden,
+        ffn_normed,
+        residual2,
+        route,
+    }
+}
+
+/// Combine FFN output with residual: residual2 + residual_scale * ffn_out
+pub fn combine_ffn_residual(
+    residual2: &[Vec<f32>],
+    ffn_out: &[Vec<f32>],
+    residual_scale: f32,
+) -> Vec<Vec<f32>> {
+    let d_model = residual2[0].len();
+    let n_tokens = residual2.len();
+    let mut output = vec![vec![0.0f32; d_model]; n_tokens];
+
+    for t in 0..n_tokens {
+        for d in 0..d_model {
+            output[t][d] =
+                residual2[t][d] + residual_scale * ffn_out[t][d];
+        }
+    }
+
+    output
+}
+
+/// Compute output logits from the final hidden state.
+pub fn compute_logits(
+    model: &MoeModel,
+    hidden: &[Vec<f32>],
+) -> Vec<f32> {
+    let d_model = model.config.d_model as usize;
+    let last_token_idx = hidden.len() - 1;
+    let last_hidden = &hidden[last_token_idx];
+
+    let normed = if let Some(ref out_norm) = model.output_norm {
+        rms_norm(last_hidden, &out_norm.data)
+    } else {
+        last_hidden.clone()
+    };
+
+    if let Some(ref embd) = model.token_embd {
+        let d = embd.shape[0] as usize;
+        let shape_vocab = embd.shape[1] as usize;
+        let mut logits = vec![0.0f32; shape_vocab];
+        for v in 0..shape_vocab {
+            let mut acc = 0.0f32;
+            for dim in 0..d {
+                acc += embd.data[v * d + dim] * normed[dim];
+            }
+            logits[v] = acc / model.config.logit_scale;
+        }
+        logits
+    } else if let Some(ref out_proj) = model.output {
+        mat_vec_transposed(out_proj, &normed, d_model, model.config.vocab_size as usize)
+    } else {
+        vec![0.0f32; model.config.vocab_size as usize]
+    }
 }
 
 /// SiLU activation: x * sigmoid(x)

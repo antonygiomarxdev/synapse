@@ -12,6 +12,7 @@ struct FfnResponse {
 
 #[derive(Debug, Serialize)]
 struct FfnRequest {
+    layer: usize,
     hidden: Vec<f32>,
     expert_ids: Vec<u32>,
     expert_scores: Vec<f32>,
@@ -49,12 +50,14 @@ impl ExpertWorkerClient {
     /// Send hidden state + routing to worker, get FFN output back.
     pub async fn compute_ffn(
         &self,
+        layer: usize,
         hidden: Vec<f32>,
         expert_ids: Vec<u32>,
         expert_scores: Vec<f32>,
     ) -> Result<Vec<f32>, DomainError> {
         let url = format!("{}/ffn", self.base_url);
         let req = FfnRequest {
+            layer,
             hidden,
             expert_ids,
             expert_scores,

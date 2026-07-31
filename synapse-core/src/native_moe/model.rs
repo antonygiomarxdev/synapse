@@ -237,6 +237,40 @@ impl MoeModel {
 
         Ok(model)
     }
+
+    /// Load coordinator weights (attention + routing + embeddings, NO expert FFN).
+    ///
+    /// For distributed inference: the coordinator runs attention locally
+    /// and dispatches expert FFN to remote workers. This function loads
+    /// everything needed for attention but skips the heavy expert tensors.
+    pub fn load_coordinator(path: &Path) -> Result<Self, String> {
+        let mut model = Self::load_routing(path)?;
+
+        let gguf = GgufFile::open(path).map_err(|e| format!("GGUF parse: {e}"))?;
+        let try_f32 = |name: &str| -> Option<Tensor> {
+            let info = gguf.find_tensor(name)?;
+            let abs = gguf.data_file_offset() + info.offset;
+            dequantize_tensor(path, abs, info.ggml_type, &info.shape).ok().map(|data| Tensor {
+                name: name.to_string(),
+                data,
+                shape: info.shape.clone(),
+            })
+        };
+
+        for idx in 0..model.config.n_layers as usize {
+            let try_load =
+                |suffix: &str| -> Option<Tensor> { try_f32(&format!("blk.{idx}.{suffix}.weight")) };
+
+            // Load attention weights (needed for coordinator)
+            model.layers[idx].attn_q = try_load("attn_q");
+            model.layers[idx].attn_k = try_load("attn_k");
+            model.layers[idx].attn_v = try_load("attn_v");
+            model.layers[idx].attn_output = try_load("attn_output");
+            // Expert FFN weights stay None — dispatched to workers
+        }
+
+        Ok(model)
+    }
 }
 
 #[cfg(test)]
