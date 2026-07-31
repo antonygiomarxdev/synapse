@@ -1,0 +1,60 @@
+{
+  "model": "/home/ksante/.ollama/models/blobs/sha256-4cbc52994d8ce56d58f3ecadcd451a5dbb2a4f1142098c6b9f030d18ee5e052b",
+  "seed": 42,
+  "max_tokens": 20,
+  "shard_0_mb": 1065.0806579589844,
+  "shard_1_mb": 1065.0806579589844,
+  "results": [
+    {
+      "prompt": "What is the capital of France?",
+      "full_model": "The capital of France is Paris.",
+      "worker_a_0_19": "This is the answer for the question:::\n:\n{123",
+      "worker_b_20_39": ". In fact, the nation of theories. In fact, the nation of theories",
+      "a_equals_b": false,
+      "full_equals_a": false,
+      "full_equals_b": false
+    },
+    {
+      "prompt": "Complete: The sun rises in the",
+      "full_model": "east and sets in the west. This is the opposite of what we would expect if the sun were",
+      "worker_a_0_19": "moon The moon The stars The sky The earth The universe The cos universe The universe The universe The universe",
+      "worker_b_20_39": "sun.\n\n\n\n This.",
+      "a_equals_b": false,
+      "full_equals_a": false,
+      "full_equals_b": false
+    },
+    {
+      "prompt": "Translate to Spanish: hello",
+      "full_model": "world - Hola, mundo - Hola, mundo - Hola, mundo -",
+      "worker_a_0_19": ",, to to to to to to to to to to to to to to to to to to",
+      "worker_b_20_39": "there.\n\n\n\n 1.0.0.0.0.0.0.",
+      "a_equals_b": false,
+      "full_equals_a": false,
+      "full_equals_b": false
+    },
+    {
+      "prompt": "The meaning of life is",
+      "full_model": "a question that has been pondered by humans for centuries. It's a deeply",
+      "worker_a_0_19": ".\n\nTo to to to to to to to to to to to to to to to to",
+      "worker_b_20_39": "in the very small number of these these this like in the the very small of what. many time",
+      "a_equals_b": false,
+      "full_equals_a": false,
+      "full_equals_b": false
+    },
+    {
+      "prompt": "Once upon a time",
+      "full_model": ", there was a girl named Sarah. Sarah was a kind and gentle soul",
+      "worker_a_0_19": "has have been been been a a a\n\n-\n-\n\n##\n\n\nThe",
+      "worker_b_20_39": "of time",
+      "a_equals_b": false,
+      "full_equals_a": false,
+      "full_equals_b": false
+    }
+  ],
+  "summary": {
+    "total_prompts": 5,
+    "a_equals_b": 0,
+    "full_matches_either": 0,
+    "workers_differ": 5
+  }
+}

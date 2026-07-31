@@ -1,6 +1,6 @@
 # ADR-0011: Native MoE Runtime — Rust + GGUF Parser
 
-**Status:** Phases 1-6 implemented, thesis validated E2E
+**Status:** Forward pass validated (correlation 0.999 with llama.cpp)
 **Date:** 2026-07-29 / updated 2026-07-30
 **Deciders:** @antonygiomarxdev
 
@@ -93,18 +93,29 @@ Parse GGUF v3 binary format: header, metadata KV pairs, tensor index.
 - Workers produce different outputs for same prompt
 - 251 tests green, 0 warnings
 
-### Next: Selective Expert Execution
+### Phase 7: Forward Pass Validation ✅
+- Single-token forward pass: correlation 0.999334 with llama-cpp-python
+- Layer-by-layer hidden states verified against llama.cpp (built from source)
+- All 32 layers, 40 experts, GQA attention with RoPE
+- Critical bug found and fixed: Q6_K dequantization element ordering
+- Reference: llama-cpp-python mean=-2.72, max=12.60, top-5=[34,36,35,37,308]
+- Our output: mean=-2.60, max=12.53, top-5=[34,36,35,308,37]
+
+### Next: Multi-token + Distributed Execution
 - Add `attention()` and `expert_ffn()` to forward loop with real weights
 - Workers execute only assigned experts — not full shard
 - Weighted sum of partial outputs for bit-identical reconstruction
 
-## Learnings from 2026-07-29 spikes
+## Learnings from 2026-07-29/30 sessions
 
 1. **Shared layers are identical across shards** — 194/194 tensors bit-identical. Coordinators don't need full model.
 2. **Expert specialization is real** — Shards produce divergent outputs. Zero-out experts consistently change model output (5/5 prompts diverge).
 3. **External routing is mathematically correct** — Rust coordinator produces 8/8 expert matches vs direct broadcast.
 4. **Hidden state extraction works** — `llama_get_embeddings_layer_inp()` extracts real hidden states at MoE layer boundaries. Requires 1-line `t_layer_inp` initialization in `granite.cpp`.
 5. **Gate masking works at architecture level** — Same prompt, different expert subsets produce different outputs in a PyTorch MoE model.
+6. **Q6_K element ordering differs from Q4_K** — ggml outputs Q6_K elements grouped by component (all q1, then q2...), not by position. Python/Rust implementations that follow the C reference code literally still produce wrong order because the actual `to_float` function uses a different layout than `dequantize_row_q6_K`.
+7. **Verify against ggml's actual dequantization, not just the C reference** — The `ggml_type_traits.to_float` function pointer may use a different implementation than the reference code in ggml-quants.c. Always compare dequantized values against `ggml_type_traits.to_float()` output, not just the reference code.
+8. **Layer-by-layer comparison against llama.cpp is essential** — Building llama.cpp from source and adding debug tensors (`ggml_set_output(cur)`) to capture intermediate hidden states is the most reliable way to find forward pass bugs.
 
 ## Constraints
 

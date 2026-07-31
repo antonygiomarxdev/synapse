@@ -48,6 +48,7 @@ synapse/
 │   │   ├── gateway/         #   axum HTTP: api, catalog, pricing, router, middleware
 │   │   ├── identity/        #   NodeId, KeyPair, Node aggregate
 │   │   ├── model/           #   ModelId, ExpertId, Catalog
+│   │   ├── native_moe/      #   Native MoE runtime (BLOCKED — see below)
 │   │   ├── swarm/           #   Consensus, Speculative engine, DAG engine
 │   │   ├── economic/        #   Reputation, Pricing, Stake management
 │   │   ├── transport/       #   WebRTC, Signalling
@@ -61,10 +62,41 @@ synapse/
 ├── config/
 │   ├── models.toml          #   Curated catalog (Kimi K3, Mixtral, etc.)
 │   └── default.toml         #   Node defaults (VRAM, pricing, STUN)
+├── docs/
+│   ├── session-2026-07-30.md        # Session log with all debug details
+│   ├── next-session-context.md      # Quick start for next session
+│   └── validation-distributed-vs-full.json  # Ensemble voting results
 ├── features/                #   Gherkin BDD specs
+├── scripts/
+│   ├── validate_distributed_vs_full.py  # Distributed vs full model comparison
+│   └── capture_reference.py             # Reference output capture
 ├── .github/workflows/       #   CI (7 jobs)
 └── docs/superpowers/        #   Design spec + implementation plan
 ```
+
+## Native MoE Runtime Status
+
+**Location:** `synapse-core/src/native_moe/`
+
+**Status:** Forward pass validated — correlation 0.999 with llama.cpp (Issue #20 resolved)
+
+**What works:**
+- GGUF v3 parser (F32, F16, Q8_0, Q4_K, Q6_K)
+- Full transformer forward pass (32 layers, 40 experts, GQA attention + RoPE)
+- Expert routing (gate_inp → softmax → top-k)
+- SiLU activation, RMS norm, residual connections
+- Output projection with tied embedding weights
+- Single-token inference: correlation 0.999334 with llama-cpp-python
+
+**What doesn't work yet:**
+- Multi-token causal attention (untested with KV cache)
+- Performance optimization (triple-loop CPU, no SIMD/BLAS)
+- Distributed expert execution across nodes
+- InferencePort integration with swarm coordinator
+
+**Main ticket:** [#20](https://github.com/antonygiomarxdev/synapse/issues/20) (resolved)
+
+**Key learnings:** See `docs/adr/0011-native-moe-runtime.md`
 
 ## Development Commands
 
@@ -179,3 +211,17 @@ Run locally: `make gauntlet`
 > *"I don't read my agents' code. I surround them with extreme constraints."* — Uncle Bob
 
 Code can be written by humans, Claude, Kimi, or any agent. The gauntlet is the gatekeeper.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Uses the five canonical triage roles with default label names. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repo: `CONTEXT.md` at root + `docs/adr/`. See `docs/agents/domain.md`.

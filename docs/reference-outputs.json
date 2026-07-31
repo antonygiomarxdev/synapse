@@ -1,0 +1,916 @@
+{
+  "model": "granite3.1-moe:3b",
+  "seed": 42,
+  "max_tokens": 20,
+  "temperature": 0.0,
+  "results": [
+    {
+      "prompt": "What is the capital of France?",
+      "response": "The capital of France is Paris. It's known for its iconic landmarks like the E",
+      "seed": 42,
+      "max_tokens": 20,
+      "eval_count": 20,
+      "eval_duration_ns": 88377479,
+      "total_duration_ns": 187788282,
+      "logprobs": [
+        {
+          "token": "The",
+          "logprob": -0.0041722822934389114,
+          "bytes": [
+            84,
+            104,
+            101
+          ]
+        },
+        {
+          "token": " capital",
+          "logprob": -4.2585714254528284e-05,
+          "bytes": [
+            32,
+            99,
+            97,
+            112,
+            105,
+            116,
+            97,
+            108
+          ]
+        },
+        {
+          "token": " of",
+          "logprob": -4.916454781778157e-05,
+          "bytes": [
+            32,
+            111,
+            102
+          ]
+        },
+        {
+          "token": " France",
+          "logprob": -3.216210302525724e-07,
+          "bytes": [
+            32,
+            70,
+            114,
+            97,
+            110,
+            99,
+            101
+          ]
+        },
+        {
+          "token": " is",
+          "logprob": -1.8063276456814492e-06,
+          "bytes": [
+            32,
+            105,
+            115
+          ]
+        },
+        {
+          "token": " Par",
+          "logprob": -9.633229637984186e-06,
+          "bytes": [
+            32,
+            80,
+            97,
+            114
+          ]
+        },
+        {
+          "token": "is",
+          "logprob": -5.420149022938858e-07,
+          "bytes": [
+            105,
+            115
+          ]
+        },
+        {
+          "token": ".",
+          "logprob": -1.104095372284064e-05,
+          "bytes": [
+            46
+          ]
+        },
+        {
+          "token": " It",
+          "logprob": -0.38545462489128113,
+          "bytes": [
+            32,
+            73,
+            116
+          ]
+        },
+        {
+          "token": "'s",
+          "logprob": -0.0016896481392905116,
+          "bytes": [
+            39,
+            115
+          ]
+        },
+        {
+          "token": " known",
+          "logprob": -0.4469693899154663,
+          "bytes": [
+            32,
+            107,
+            110,
+            111,
+            119,
+            110
+          ]
+        },
+        {
+          "token": " for",
+          "logprob": -9.177548781735823e-05,
+          "bytes": [
+            32,
+            102,
+            111,
+            114
+          ]
+        },
+        {
+          "token": " its",
+          "logprob": -0.08877339214086533,
+          "bytes": [
+            32,
+            105,
+            116,
+            115
+          ]
+        },
+        {
+          "token": " icon",
+          "logprob": -0.010125987231731415,
+          "bytes": [
+            32,
+            105,
+            99,
+            111,
+            110
+          ]
+        },
+        {
+          "token": "ic",
+          "logprob": -2.6397731289762305e-07,
+          "bytes": [
+            105,
+            99
+          ]
+        },
+        {
+          "token": " land",
+          "logprob": -0.0012921103043481708,
+          "bytes": [
+            32,
+            108,
+            97,
+            110,
+            100
+          ]
+        },
+        {
+          "token": "marks",
+          "logprob": -7.607220140926074e-06,
+          "bytes": [
+            109,
+            97,
+            114,
+            107,
+            115
+          ]
+        },
+        {
+          "token": " like",
+          "logprob": -0.1495010405778885,
+          "bytes": [
+            32,
+            108,
+            105,
+            107,
+            101
+          ]
+        },
+        {
+          "token": " the",
+          "logprob": -2.11894166568527e-06,
+          "bytes": [
+            32,
+            116,
+            104,
+            101
+          ]
+        },
+        {
+          "token": " E",
+          "logprob": -1.254048243026773e-06,
+          "bytes": [
+            32,
+            69
+          ]
+        }
+      ]
+    },
+    {
+      "prompt": "Complete: The sun rises in the",
+      "response": "The east. This is a fundamental observation in astronomy, where the sun appears to move across",
+      "seed": 42,
+      "max_tokens": 20,
+      "eval_count": 20,
+      "eval_duration_ns": 89313556,
+      "total_duration_ns": 174747283,
+      "logprobs": [
+        {
+          "token": "The",
+          "logprob": -0.07510817050933838,
+          "bytes": [
+            84,
+            104,
+            101
+          ]
+        },
+        {
+          "token": " east",
+          "logprob": -1.6101874113082886,
+          "bytes": [
+            32,
+            101,
+            97,
+            115,
+            116
+          ]
+        },
+        {
+          "token": ".",
+          "logprob": -0.045529939234256744,
+          "bytes": [
+            46
+          ]
+        },
+        {
+          "token": " This",
+          "logprob": -1.2314759492874146,
+          "bytes": [
+            32,
+            84,
+            104,
+            105,
+            115
+          ]
+        },
+        {
+          "token": " is",
+          "logprob": -0.21903033554553986,
+          "bytes": [
+            32,
+            105,
+            115
+          ]
+        },
+        {
+          "token": " a",
+          "logprob": -0.1475076675415039,
+          "bytes": [
+            32,
+            97
+          ]
+        },
+        {
+          "token": " fundamental",
+          "logprob": -0.40704798698425293,
+          "bytes": [
+            32,
+            102,
+            117,
+            110,
+            100,
+            97,
+            109,
+            101,
+            110,
+            116,
+            97,
+            108
+          ]
+        },
+        {
+          "token": " observation",
+          "logprob": -2.1065516471862793,
+          "bytes": [
+            32,
+            111,
+            98,
+            115,
+            101,
+            114,
+            118,
+            97,
+            116,
+            105,
+            111,
+            110
+          ]
+        },
+        {
+          "token": " in",
+          "logprob": -0.14501245319843292,
+          "bytes": [
+            32,
+            105,
+            110
+          ]
+        },
+        {
+          "token": " a",
+          "logprob": -0.025602253153920174,
+          "bytes": [
+            32,
+            97
+          ]
+        },
+        {
+          "token": "str",
+          "logprob": -4.32965225627413e-06,
+          "bytes": [
+            115,
+            116,
+            114
+          ]
+        },
+        {
+          "token": "onomy",
+          "logprob": -1.7558448234922253e-05,
+          "bytes": [
+            111,
+            110,
+            111,
+            109,
+            121
+          ]
+        },
+        {
+          "token": ",",
+          "logprob": -0.06392218172550201,
+          "bytes": [
+            44
+          ]
+        },
+        {
+          "token": " where",
+          "logprob": -0.9481161832809448,
+          "bytes": [
+            32,
+            119,
+            104,
+            101,
+            114,
+            101
+          ]
+        },
+        {
+          "token": " the",
+          "logprob": -0.09346409142017365,
+          "bytes": [
+            32,
+            116,
+            104,
+            101
+          ]
+        },
+        {
+          "token": " sun",
+          "logprob": -0.6138423085212708,
+          "bytes": [
+            32,
+            115,
+            117,
+            110
+          ]
+        },
+        {
+          "token": " appears",
+          "logprob": -1.1480633020401,
+          "bytes": [
+            32,
+            97,
+            112,
+            112,
+            101,
+            97,
+            114,
+            115
+          ]
+        },
+        {
+          "token": " to",
+          "logprob": -0.005128106568008661,
+          "bytes": [
+            32,
+            116,
+            111
+          ]
+        },
+        {
+          "token": " move",
+          "logprob": -0.11114542186260223,
+          "bytes": [
+            32,
+            109,
+            111,
+            118,
+            101
+          ]
+        },
+        {
+          "token": " across",
+          "logprob": -0.23999877274036407,
+          "bytes": [
+            32,
+            97,
+            99,
+            114,
+            111,
+            115,
+            115
+          ]
+        }
+      ]
+    },
+    {
+      "prompt": "Translate to Spanish: hello",
+      "response": "¡Hola!",
+      "seed": 42,
+      "max_tokens": 20,
+      "eval_count": 6,
+      "eval_duration_ns": 24918603,
+      "total_duration_ns": 86976693,
+      "logprobs": [
+        {
+          "token": "�",
+          "logprob": -0.09935995936393738,
+          "bytes": [
+            239,
+            191,
+            189
+          ]
+        },
+        {
+          "token": "�",
+          "logprob": -0.006630906835198402,
+          "bytes": [
+            239,
+            191,
+            189
+          ]
+        },
+        {
+          "token": "H",
+          "logprob": -0.007287542801350355,
+          "bytes": [
+            72
+          ]
+        },
+        {
+          "token": "ola",
+          "logprob": -0.0011405678233131766,
+          "bytes": [
+            111,
+            108,
+            97
+          ]
+        },
+        {
+          "token": "!",
+          "logprob": -0.0007949248538352549,
+          "bytes": [
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "prompt": "The meaning of life is",
+      "response": "The meaning of life is a philosophical and metaphysical question related to the purpose",
+      "seed": 42,
+      "max_tokens": 20,
+      "eval_count": 20,
+      "eval_duration_ns": 82377738,
+      "total_duration_ns": 159998521,
+      "logprobs": [
+        {
+          "token": "The",
+          "logprob": -0.020279906690120697,
+          "bytes": [
+            84,
+            104,
+            101
+          ]
+        },
+        {
+          "token": " meaning",
+          "logprob": -0.008164530619978905,
+          "bytes": [
+            32,
+            109,
+            101,
+            97,
+            110,
+            105,
+            110,
+            103
+          ]
+        },
+        {
+          "token": " of",
+          "logprob": -0.0030531957745552063,
+          "bytes": [
+            32,
+            111,
+            102
+          ]
+        },
+        {
+          "token": " life",
+          "logprob": -2.6030224034911953e-05,
+          "bytes": [
+            32,
+            108,
+            105,
+            102,
+            101
+          ]
+        },
+        {
+          "token": " is",
+          "logprob": -0.13648025691509247,
+          "bytes": [
+            32,
+            105,
+            115
+          ]
+        },
+        {
+          "token": " a",
+          "logprob": -0.017976533621549606,
+          "bytes": [
+            32,
+            97
+          ]
+        },
+        {
+          "token": " ph",
+          "logprob": -0.17592351138591766,
+          "bytes": [
+            32,
+            112,
+            104
+          ]
+        },
+        {
+          "token": "ilo",
+          "logprob": -1.6541258673896664e-07,
+          "bytes": [
+            105,
+            108,
+            111
+          ]
+        },
+        {
+          "token": "sop",
+          "logprob": -6.903817961756431e-08,
+          "bytes": [
+            115,
+            111,
+            112
+          ]
+        },
+        {
+          "token": "h",
+          "logprob": -1.3714221722693765e-06,
+          "bytes": [
+            104
+          ]
+        },
+        {
+          "token": "ical",
+          "logprob": -2.1458667106344365e-05,
+          "bytes": [
+            105,
+            99,
+            97,
+            108
+          ]
+        },
+        {
+          "token": " and",
+          "logprob": -0.04516679048538208,
+          "bytes": [
+            32,
+            97,
+            110,
+            100
+          ]
+        },
+        {
+          "token": " met",
+          "logprob": -0.002072772942483425,
+          "bytes": [
+            32,
+            109,
+            101,
+            116
+          ]
+        },
+        {
+          "token": "aph",
+          "logprob": -4.277680272934958e-05,
+          "bytes": [
+            97,
+            112,
+            104
+          ]
+        },
+        {
+          "token": "ysical",
+          "logprob": -0.0005708037060685456,
+          "bytes": [
+            121,
+            115,
+            105,
+            99,
+            97,
+            108
+          ]
+        },
+        {
+          "token": " question",
+          "logprob": -0.00016045899246819317,
+          "bytes": [
+            32,
+            113,
+            117,
+            101,
+            115,
+            116,
+            105,
+            111,
+            110
+          ]
+        },
+        {
+          "token": " related",
+          "logprob": -0.06045142188668251,
+          "bytes": [
+            32,
+            114,
+            101,
+            108,
+            97,
+            116,
+            101,
+            100
+          ]
+        },
+        {
+          "token": " to",
+          "logprob": -4.165835889580194e-07,
+          "bytes": [
+            32,
+            116,
+            111
+          ]
+        },
+        {
+          "token": " the",
+          "logprob": -0.0037116443272680044,
+          "bytes": [
+            32,
+            116,
+            104,
+            101
+          ]
+        },
+        {
+          "token": " purpose",
+          "logprob": -0.006818526890128851,
+          "bytes": [
+            32,
+            112,
+            117,
+            114,
+            112,
+            111,
+            115,
+            101
+          ]
+        }
+      ]
+    },
+    {
+      "prompt": "Once upon a time",
+      "response": "In the quaint village of Meadowgrove, nestled between rolling hills and a",
+      "seed": 42,
+      "max_tokens": 20,
+      "eval_count": 20,
+      "eval_duration_ns": 81608451,
+      "total_duration_ns": 158555285,
+      "logprobs": [
+        {
+          "token": "In",
+          "logprob": -0.08081896603107452,
+          "bytes": [
+            73,
+            110
+          ]
+        },
+        {
+          "token": " the",
+          "logprob": -1.0403220653533936,
+          "bytes": [
+            32,
+            116,
+            104,
+            101
+          ]
+        },
+        {
+          "token": " qu",
+          "logprob": -1.4842612743377686,
+          "bytes": [
+            32,
+            113,
+            117
+          ]
+        },
+        {
+          "token": "aint",
+          "logprob": -0.0002141535806003958,
+          "bytes": [
+            97,
+            105,
+            110,
+            116
+          ]
+        },
+        {
+          "token": " v",
+          "logprob": -0.3784181475639343,
+          "bytes": [
+            32,
+            118
+          ]
+        },
+        {
+          "token": "illage",
+          "logprob": -7.230335086205741e-06,
+          "bytes": [
+            105,
+            108,
+            108,
+            97,
+            103,
+            101
+          ]
+        },
+        {
+          "token": " of",
+          "logprob": -0.0014188699424266815,
+          "bytes": [
+            32,
+            111,
+            102
+          ]
+        },
+        {
+          "token": " Me",
+          "logprob": -0.1460127830505371,
+          "bytes": [
+            32,
+            77,
+            101
+          ]
+        },
+        {
+          "token": "adow",
+          "logprob": -0.0028928634710609913,
+          "bytes": [
+            97,
+            100,
+            111,
+            119
+          ]
+        },
+        {
+          "token": "gro",
+          "logprob": -0.02813635766506195,
+          "bytes": [
+            103,
+            114,
+            111
+          ]
+        },
+        {
+          "token": "ve",
+          "logprob": -2.686657171580009e-05,
+          "bytes": [
+            118,
+            101
+          ]
+        },
+        {
+          "token": ",",
+          "logprob": -0.0002263481292175129,
+          "bytes": [
+            44
+          ]
+        },
+        {
+          "token": " nest",
+          "logprob": -0.050671279430389404,
+          "bytes": [
+            32,
+            110,
+            101,
+            115,
+            116
+          ]
+        },
+        {
+          "token": "led",
+          "logprob": -1.2265461180049897e-07,
+          "bytes": [
+            108,
+            101,
+            100
+          ]
+        },
+        {
+          "token": " between",
+          "logprob": -0.007248520385473967,
+          "bytes": [
+            32,
+            98,
+            101,
+            116,
+            119,
+            101,
+            101,
+            110
+          ]
+        },
+        {
+          "token": " rolling",
+          "logprob": -0.6633216142654419,
+          "bytes": [
+            32,
+            114,
+            111,
+            108,
+            108,
+            105,
+            110,
+            103
+          ]
+        },
+        {
+          "token": " h",
+          "logprob": -0.02020418830215931,
+          "bytes": [
+            32,
+            104
+          ]
+        },
+        {
+          "token": "ills",
+          "logprob": -0.00029751568217761815,
+          "bytes": [
+            105,
+            108,
+            108,
+            115
+          ]
+        },
+        {
+          "token": " and",
+          "logprob": -9.400712588103488e-05,
+          "bytes": [
+            32,
+            97,
+            110,
+            100
+          ]
+        },
+        {
+          "token": " a",
+          "logprob": -0.0017848798306658864,
+          "bytes": [
+            32,
+            97
+          ]
+        }
+      ]
+    }
+  ]
+}
