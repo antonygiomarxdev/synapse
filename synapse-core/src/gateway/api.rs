@@ -1,7 +1,11 @@
+use std::sync::Arc;
+
 use axum::{Json, Router, routing::get};
 use serde::Serialize;
+use utoipa::OpenApi;
 
-use super::{catalog, router};
+use super::{catalog, jobs, router};
+use crate::job::infrastructure::InMemoryJobStore;
 
 #[derive(Serialize)]
 struct HealthResponse {
@@ -9,6 +13,22 @@ struct HealthResponse {
     version: &'static str,
     swarm_nodes: usize,
 }
+
+/// OpenAPI documentation.
+#[derive(OpenApi)]
+#[openapi(
+    paths(jobs::create_job, jobs::get_job),
+    components(schemas(
+        jobs::CreateJobRequest,
+        jobs::MessageRequest,
+        jobs::CreateJobResponse,
+        jobs::JobResponse,
+        jobs::JobResultResponse,
+        jobs::ErrorResponse,
+    )),
+    tags((name = "jobs", description = "Async inference job management"))
+)]
+pub struct ApiDoc;
 
 /// Default bind address for the gateway HTTP server.
 pub const DEFAULT_BIND_ADDR: &str = "0.0.0.0:8000";
@@ -34,11 +54,27 @@ pub async fn serve_on(listener: tokio::net::TcpListener) {
     let app = build_router();
     axum::serve(listener, app).await.unwrap();
 }
+
+/// Builds the gateway router with default in-memory state.
 pub fn build_router() -> Router {
+    let state = jobs::AppState {
+        job_store: Arc::new(InMemoryJobStore::new()),
+    };
+    build_router_with_state(state)
+}
+
+/// Builds the gateway router with the given application state.
+pub fn build_router_with_state(state: jobs::AppState) -> Router {
+    let openapi = ApiDoc::openapi();
+
     Router::new()
         .route("/health", get(health))
         .route("/v1/models", get(catalog::list_models))
         .route("/v1/chat/completions", axum::routing::post(router::chat_completions))
+        .route("/v1/jobs", axum::routing::post(jobs::create_job))
+        .route("/v1/jobs/{id}", axum::routing::get(jobs::get_job))
+        .merge(utoipa_swagger_ui::SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi))
+        .with_state(state)
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -58,6 +94,40 @@ mod tests {
 
         let response = app
             .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn openapi_json_endpoint() {
+        let app = build_router();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api-docs/openapi.json")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn swagger_ui_endpoint() {
+        let app = build_router();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/swagger-ui/")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 

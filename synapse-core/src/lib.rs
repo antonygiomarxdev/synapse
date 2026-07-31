@@ -2,6 +2,7 @@ pub mod dht;
 pub mod economic;
 pub mod gateway;
 pub mod identity;
+pub mod job;
 pub mod model;
 pub mod native_moe;
 pub mod runtime;
