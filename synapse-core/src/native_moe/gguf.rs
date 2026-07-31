@@ -106,6 +106,20 @@ impl GgmlType {
     pub fn is_quantized(self) -> bool {
         self.element_size() == 0 && self.block_size() > 0
     }
+
+    /// Number of f32 elements per quantized block.
+    pub fn elements_per_block(self) -> usize {
+        match self {
+            GgmlType::Q4_0 | GgmlType::Q4_1 => 32,
+            GgmlType::Q5_0 | GgmlType::Q5_1 => 32,
+            GgmlType::Q8_0 | GgmlType::Q8_1 => 32,
+            GgmlType::Q4_K
+            | GgmlType::Q5_K
+            | GgmlType::Q6_K
+            | GgmlType::Q8_K => 256,
+            _ => 0,
+        }
+    }
 }
 
 /// GGUF KV value (a single metadata entry).

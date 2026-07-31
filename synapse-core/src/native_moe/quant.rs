@@ -39,6 +39,72 @@ pub fn dequantize_tensor(
     }
 }
 
+/// Dequantize a single expert's slice from a quantized expert tensor.
+///
+/// Expert tensors store `n_experts` experts contiguously. Expert `e` occupies
+/// `expert_elems` elements starting at element offset `e * expert_elems`.
+///
+/// For quantized types, this translates to a byte offset of
+/// `e * expert_elems / elems_per_block * block_bytes`.
+///
+/// Returns the dequantized f32 weights for the specified expert.
+pub fn dequantize_expert(
+    path: &std::path::Path,
+    tensor_file_offset: u64,
+    ggml_type: GgmlType,
+    expert_index: usize,
+    expert_elems: usize,
+) -> io::Result<Vec<f32>> {
+    let mut f = std::fs::File::open(path)?;
+
+    match ggml_type {
+        GgmlType::F32 => {
+            let byte_offset =
+                tensor_file_offset + (expert_index * expert_elems * 4) as u64;
+            f.seek(SeekFrom::Start(byte_offset))?;
+            let mut out = vec![0.0f32; expert_elems];
+            let bytes = bytemuck::cast_slice_mut(&mut out);
+            f.read_exact(bytes)?;
+            Ok(out)
+        }
+        GgmlType::F16 => {
+            let byte_offset =
+                tensor_file_offset + (expert_index * expert_elems * 2) as u64;
+            f.seek(SeekFrom::Start(byte_offset))?;
+            let mut raw = vec![0u16; expert_elems];
+            let bytes = bytemuck::cast_slice_mut(&mut raw);
+            f.read_exact(bytes)?;
+            Ok(raw.iter().map(|&h| f16_to_f32(h)).collect())
+        }
+        quant_type => {
+            // Quantized: compute block-aligned offset
+            let block_bytes = quant_type.block_size();
+            let elems_per_block = quant_type.elements_per_block();
+            if block_bytes == 0 || elems_per_block == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!("unsupported quant type: {quant_type:?}"),
+                ));
+            }
+            let blocks_per_expert = expert_elems / elems_per_block;
+            let expert_byte_offset = blocks_per_expert * block_bytes;
+            let seek_pos = tensor_file_offset
+                + (expert_index * expert_byte_offset) as u64;
+            f.seek(SeekFrom::Start(seek_pos))?;
+
+            match quant_type {
+                GgmlType::Q8_0 => dequant_q8_0_raw(&mut f, expert_elems),
+                GgmlType::Q4_K => dequant_q4_k_raw(&mut f, expert_elems),
+                GgmlType::Q6_K => dequant_q6_k_raw(&mut f, expert_elems),
+                other => Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!("expert dequant not implemented for {other:?}"),
+                )),
+            }
+        }
+    }
+}
+
 /// Reorder data from column-major (GGUF storage) to row-major (our usage).
 /// GGUF stores tensors column-major: data[col * rows + row]
 /// We want row-major: data[row * cols + col]
