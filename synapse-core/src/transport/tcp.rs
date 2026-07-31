@@ -2,11 +2,21 @@
 ///
 /// Replaces Unix sockets with TCP for cross-machine deployment.
 /// Workers listen on TCP ports, coordinator connects via TCP.
+///
+/// # Known Limitations
+///
+/// - **No TLS/encryption**: Messages are sent in plaintext. For production use,
+///   TLS should be added (see issue #62).
+/// - **No connection pooling**: Each send() creates a new connection.
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
+use super::ports::TransportPort;
 use crate::shared::DomainError;
+
+/// Maximum message size (1 MB) to prevent allocation bombs.
+const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 
 /// Configuration for a TCP worker endpoint.
 #[derive(Debug, Clone)]
@@ -20,6 +30,7 @@ pub struct TcpWorkerConfig {
 /// TCP-based worker port for multi-machine deployment.
 ///
 /// Connects to workers over TCP instead of Unix sockets.
+/// Implements `TransportPort` for use with the scheduler.
 pub struct TcpTransport {
     config: TcpWorkerConfig,
 }
@@ -30,8 +41,18 @@ impl TcpTransport {
         Self { config }
     }
 
+    /// Get the worker address.
+    pub fn addr(&self) -> SocketAddr {
+        self.config.addr
+    }
+}
+
+#[async_trait::async_trait]
+impl TransportPort for TcpTransport {
     /// Send a message to the worker and receive a response.
-    pub async fn send(&self, message: &[u8]) -> Result<Vec<u8>, DomainError> {
+    ///
+    /// Uses length-prefixed protocol: [4 bytes length][payload]
+    async fn send(&self, message: &[u8]) -> Result<Vec<u8>, DomainError> {
         let mut stream = TcpStream::connect(self.config.addr)
             .await
             .map_err(|e| DomainError::WorkerDispatchFailed {
@@ -60,6 +81,15 @@ impl TcpTransport {
         })?;
         let resp_len = u32::from_be_bytes(len_buf) as usize;
 
+        // Validate message size
+        if resp_len > MAX_MESSAGE_SIZE {
+            return Err(DomainError::WorkerDispatchFailed {
+                reason: format!(
+                    "Response too large: {resp_len} bytes (max {MAX_MESSAGE_SIZE})"
+                ),
+            });
+        }
+
         let mut resp_buf = vec![0u8; resp_len];
         stream.read_exact(&mut resp_buf).await.map_err(|e| {
             DomainError::WorkerDispatchFailed {
@@ -68,11 +98,6 @@ impl TcpTransport {
         })?;
 
         Ok(resp_buf)
-    }
-
-    /// Get the worker address.
-    pub fn addr(&self) -> SocketAddr {
-        self.config.addr
     }
 }
 
@@ -104,9 +129,12 @@ impl TcpWorkerListener {
     }
 
     /// Accept a single connection, read message, call handler, send response.
-    pub async fn accept_one<F>(&self, handler: F) -> Result<(), DomainError>
+    ///
+    /// Handler is async to avoid blocking the tokio runtime.
+    pub async fn accept_single<F, Fut>(&self, handler: F) -> Result<(), DomainError>
     where
-        F: Fn(Vec<u8>) -> Vec<u8>,
+        F: Fn(Vec<u8>) -> Fut,
+        Fut: std::future::Future<Output = Vec<u8>>,
     {
         let (mut stream, _addr) = self.listener.accept().await.map_err(|e| {
             DomainError::WorkerDispatchFailed {
@@ -123,6 +151,15 @@ impl TcpWorkerListener {
         })?;
         let msg_len = u32::from_be_bytes(len_buf) as usize;
 
+        // Validate message size
+        if msg_len > MAX_MESSAGE_SIZE {
+            return Err(DomainError::WorkerDispatchFailed {
+                reason: format!(
+                    "Message too large: {msg_len} bytes (max {MAX_MESSAGE_SIZE})"
+                ),
+            });
+        }
+
         let mut msg_buf = vec![0u8; msg_len];
         stream.read_exact(&mut msg_buf).await.map_err(|e| {
             DomainError::WorkerDispatchFailed {
@@ -130,8 +167,8 @@ impl TcpWorkerListener {
             }
         })?;
 
-        // Call handler
-        let response = handler(msg_buf);
+        // Call handler (async)
+        let response = handler(msg_buf).await;
 
         // Write length-prefixed response
         let len = response.len() as u32;
@@ -178,7 +215,7 @@ mod tests {
 
         // Spawn handler
         let handle = tokio::spawn(async move {
-            listener.accept_one(|msg| {
+            listener.accept_single(|msg| async move {
                 // Echo back with prefix
                 let mut response = b"echo: ".to_vec();
                 response.extend_from_slice(&msg);
@@ -211,7 +248,7 @@ mod tests {
         // Spawn handler that accepts multiple connections
         let handle = tokio::spawn(async move {
             for _ in 0..3 {
-                listener.accept_one(|msg| {
+                listener.accept_single(|msg| async move {
                     let mut response = b"response: ".to_vec();
                     response.extend_from_slice(&msg);
                     response
@@ -256,5 +293,32 @@ mod tests {
         };
         let transport = TcpTransport::new(config);
         assert_eq!(transport.addr(), test_addr());
+    }
+
+    #[tokio::test]
+    async fn tcp_transport_rejects_oversized_response() {
+        // Start listener that sends oversized response
+        let listener = TcpWorkerListener::bind(test_addr()).await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let handle = tokio::spawn(async move {
+            listener.accept_single(|_| async move {
+                // Send response larger than MAX_MESSAGE_SIZE
+                vec![0u8; MAX_MESSAGE_SIZE + 1]
+            }).await.unwrap();
+        });
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        let config = TcpWorkerConfig {
+            worker_id: "test".into(),
+            addr,
+        };
+        let transport = TcpTransport::new(config);
+        let result = transport.send(b"hello").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("too large"));
+
+        handle.await.unwrap();
     }
 }
