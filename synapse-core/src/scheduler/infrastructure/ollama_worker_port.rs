@@ -20,7 +20,7 @@ pub struct WorkerConfig {
 /// Maps `WorkerId` to an Ollama model and sends inference requests
 /// to `POST /api/generate`.
 pub struct OllamaWorkerPort {
-    client: reqwest::Client,
+    client: reqwest::blocking::Client,
     workers: HashMap<WorkerId, WorkerConfig>,
 }
 
@@ -44,7 +44,7 @@ impl OllamaWorkerPort {
         let workers: HashMap<WorkerId, WorkerConfig> =
             configs.into_iter().map(|c| (c.id.clone(), c)).collect();
         Self {
-            client: reqwest::Client::builder()
+            client: reqwest::blocking::Client::builder()
                 .timeout(std::time::Duration::from_secs(120))
                 .build()
                 .expect("failed to build HTTP client"),
@@ -66,23 +66,17 @@ impl WorkerPort for OllamaWorkerPort {
             stream: false,
         };
 
-        // Block on the async HTTP call
-        let rt = tokio::runtime::Handle::current();
-        let response = rt.block_on(async {
-            self.client
-                .post(&url)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| DomainError::WorkerDispatchFailed {
-                    reason: format!("HTTP request failed: {e}"),
-                })?
-                .json::<OllamaResponse>()
-                .await
-                .map_err(|e| DomainError::WorkerDispatchFailed {
-                    reason: format!("failed to parse response: {e}"),
-                })
-        })?;
+        let response = self.client
+            .post(&url)
+            .json(&body)
+            .send()
+            .map_err(|e| DomainError::WorkerDispatchFailed {
+                reason: format!("HTTP request failed: {e}"),
+            })?
+            .json::<OllamaResponse>()
+            .map_err(|e| DomainError::WorkerDispatchFailed {
+                reason: format!("failed to parse response: {e}"),
+            })?;
 
         Ok(response.response)
     }
@@ -93,8 +87,7 @@ impl WorkerPort for OllamaWorkerPort {
         })?;
 
         let url = format!("{}/api/tags", config.base_url);
-        let rt = tokio::runtime::Handle::current();
-        match rt.block_on(self.client.get(&url).send()) {
+        match self.client.get(&url).send() {
             Ok(resp) => Ok(resp.status().is_success()),
             Err(_) => Ok(false),
         }
@@ -117,8 +110,8 @@ mod tests {
         )
     }
 
-    #[tokio::test]
-    async fn health_check_localhost() {
+    #[test]
+    fn health_check_localhost() {
         let port = OllamaWorkerPort::new(vec![WorkerConfig {
             id: WorkerId::new("w-0"),
             model: "granite3.1-moe:3b".into(),
@@ -126,12 +119,11 @@ mod tests {
         }]);
 
         let healthy = port.health_check(&WorkerId::new("w-0")).unwrap();
-        // This test requires Ollama to be running
         assert!(healthy);
     }
 
-    #[tokio::test]
-    async fn health_check_unknown_worker() {
+    #[test]
+    fn health_check_unknown_worker() {
         let port = OllamaWorkerPort::new(vec![]);
         let result = port.health_check(&WorkerId::new("unknown"));
         assert!(matches!(result, Err(DomainError::WorkerDispatchFailed { .. })));

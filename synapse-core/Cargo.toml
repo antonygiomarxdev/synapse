@@ -40,7 +40,7 @@ bytemuck = "1"
 alloy = { version = "2", features = ["full"] }
 
 # HTTP client (OllamaWorkerPort)
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 
 [dev-dependencies]
 mutants = "0.0.4"
