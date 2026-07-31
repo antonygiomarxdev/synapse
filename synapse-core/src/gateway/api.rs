@@ -4,8 +4,9 @@ use axum::{Json, Router, routing::get};
 use serde::Serialize;
 use utoipa::OpenApi;
 
-use super::{catalog, jobs, metrics, router};
+use super::{catalog, jobs, router};
 use crate::job::infrastructure::InMemoryJobStore;
+use crate::scheduler::metrics::MetricsCollector;
 use crate::scheduler::scheduler::Scheduler;
 use crate::scheduler::infrastructure::{InMemoryTaskStore, OllamaWorkerPort, WorkerConfig};
 use crate::scheduler::task::WorkerInfo;
@@ -130,7 +131,7 @@ pub fn build_router_with_config(config: GatewayConfig) -> Router {
     let state = jobs::AppState {
         job_store,
         scheduler: Some(scheduler),
-        metrics: metrics::MetricsCollector::new(),
+        metrics: Arc::new(MetricsCollector::new()),
     };
     build_router_with_state(state)
 }
@@ -145,7 +146,7 @@ pub fn build_router_with_state(state: jobs::AppState) -> Router {
         .route("/v1/chat/completions", axum::routing::post(router::chat_completions))
         .route("/v1/jobs", axum::routing::post(jobs::create_job))
         .route("/v1/jobs/{id}", axum::routing::get(jobs::get_job))
-        .route("/metrics", get(router::metrics))
+        .route("/metrics", get(router::metrics_handler))
         .merge(utoipa_swagger_ui::SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi))
         .with_state(state)
 }
@@ -205,5 +206,26 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_returns_prometheus() {
+        let app = build_router();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("# HELP synapse_jobs_total"));
+        assert!(body_str.contains("# TYPE synapse_jobs_total counter"));
     }
 }

@@ -61,7 +61,7 @@ fn default_priority() -> String {
 /// Handles Prometheus metrics requests.
 ///
 /// Returns metrics in Prometheus text format.
-pub async fn metrics(
+pub async fn metrics_handler(
     State(state): State<super::jobs::AppState>,
 ) -> impl IntoResponse {
     let prometheus = state.metrics.export_prometheus();
@@ -198,7 +198,7 @@ mod tests {
         super::super::jobs::AppState {
             job_store: Arc::new(InMemoryJobStore::new()),
             scheduler: None,
-            metrics: super::super::metrics::MetricsCollector::new(),
+            metrics: Arc::new(crate::scheduler::metrics::MetricsCollector::new()),
         }
     }
 
