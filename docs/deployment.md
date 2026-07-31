@@ -195,9 +195,50 @@ scrape_configs:
       - targets: ['localhost:8000']
 ```
 
-### Grafana
+## Native MoE Runtime
 
-Import the Synapse dashboard from `docs/grafana/synapse.json`.
+The native runtime runs experts directly from GGUF files without Ollama:
+
+### Expert Workers
+
+Start expert workers on separate machines:
+
+```bash
+# Machine 1: Expert worker with experts 0-9
+./target/release/expert_worker model.gguf 0 1 2 3 4 5 6 7 8 9 --port 8001
+
+# Machine 2: Expert worker with experts 10-19
+./target/release/expert_worker model.gguf 10 11 12 13 14 15 16 17 18 19 --port 8002
+```
+
+### Distributed Inference
+
+The gateway coordinates distributed inference across workers:
+
+```bash
+# Start gateway
+./target/release/synapse-core --port 8000
+
+# Submit job — gateway routes to appropriate workers
+curl -X POST http://localhost:8000/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"model": "granite-3b-moe", "messages": [{"role": "user", "content": "hello"}]}'
+```
+
+### Benchmarks
+
+Run distributed vs monolithic benchmarks:
+
+```bash
+# Compare distributed inference with monolithic
+cargo run --release --bin bench_distributed
+
+# Ollama throughput benchmark
+cargo run --release --bin bench_ollama
+
+# Output consistency test
+cargo run --release --bin bench_consistency
+```
 
 ## Multi-Machine Deployment
 
