@@ -26,8 +26,8 @@ Synapse has pivoted to **V0: a permissioned async job network for batch inferenc
 | #20 | ✅ Closed | Native MoE forward pass — correlation 0.999 with llama.cpp |
 | #21 | ✅ Closed | Job Model + Async API — POST/GET /v1/jobs, 60 tests |
 | #22 | ✅ Closed | Scheduler Mínimo — round-robin, leases (30s), retries (max 3), 44 tests |
-| #23 | 🔜 Next | Multi-Worker + Crash Recovery |
-| #24 | Planned | Métricas E2E |
+| #23 | ✅ Closed | Multi-Worker + Crash Recovery — OllamaWorkerPort, MetricsCollector, 7 integration tests |
+| #24 | Next | Métricas E2E |
 | #25 | Planned | Native MoE Runtime — InferencePort Validation |
 
 ### Validated (pre-pivot)
@@ -201,4 +201,4 @@ Apache 2.0. See [LICENSE](LICENSE).
 
 ---
 
-*Last updated: 2026-07-31. V0-1 (Job Model) and V0-2 (Scheduler) complete. Next: V0-3 (Multi-Worker + Crash Recovery).*
+*Last updated: 2026-07-31. V0-1, V0-2, V0-3 complete with all acceptance criteria verified. Next: V0-4 (Métricas E2E).*
