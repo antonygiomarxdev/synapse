@@ -1,4 +1,4 @@
-use super::job::Job;
+use super::job::{Job, JobResult};
 use super::job_id::JobId;
 use super::job_status::JobStatus;
 use crate::shared::DomainError;
@@ -17,8 +17,14 @@ pub trait JobStore: Send + Sync {
     /// Lists all jobs.
     fn list(&self) -> Result<Vec<Job>, DomainError>;
 
-    /// Updates only the status of a job.
-    fn update_status(&self, id: &JobId, status: JobStatus) -> Result<(), DomainError>;
+    /// Transitions a job from Pending to Running.
+    fn start(&self, id: &JobId) -> Result<(), DomainError>;
+
+    /// Transitions a job to Completed with a result.
+    fn complete(&self, id: &JobId, result: JobResult) -> Result<(), DomainError>;
+
+    /// Transitions a job to Failed with a reason.
+    fn fail(&self, id: &JobId, reason: String) -> Result<(), DomainError>;
 }
 
 #[cfg(test)]
@@ -54,10 +60,26 @@ mod tests {
             Ok(jobs.values().cloned().collect())
         }
 
-        fn update_status(&self, id: &JobId, status: JobStatus) -> Result<(), DomainError> {
+        fn start(&self, id: &JobId) -> Result<(), DomainError> {
             let mut jobs = self.jobs.lock().unwrap();
             match jobs.get_mut(id) {
-                Some(job) => job.transition_to(status),
+                Some(job) => job.transition_to(JobStatus::Running),
+                None => Err(DomainError::JobNotFound { job_id: id.to_string() }),
+            }
+        }
+
+        fn complete(&self, id: &JobId, result: crate::job::job::JobResult) -> Result<(), DomainError> {
+            let mut jobs = self.jobs.lock().unwrap();
+            match jobs.get_mut(id) {
+                Some(job) => job.complete(result),
+                None => Err(DomainError::JobNotFound { job_id: id.to_string() }),
+            }
+        }
+
+        fn fail(&self, id: &JobId, reason: String) -> Result<(), DomainError> {
+            let mut jobs = self.jobs.lock().unwrap();
+            match jobs.get_mut(id) {
+                Some(job) => job.fail(reason),
                 None => Err(DomainError::JobNotFound { job_id: id.to_string() }),
             }
         }
@@ -100,21 +122,46 @@ mod tests {
     }
 
     #[test]
-    fn update_status_changes_status() {
+    fn start_transitions_to_running() {
         let store = InMemoryStore::new();
         let job = test_job();
         let id = job.id;
         store.save(&job).unwrap();
-        store.update_status(&id, JobStatus::Running).unwrap();
+        store.start(&id).unwrap();
         let found = store.find_by_id(&id).unwrap().unwrap();
         assert_eq!(found.status, JobStatus::Running);
     }
 
     #[test]
-    fn update_status_unknown_job() {
+    fn start_unknown_job() {
         let store = InMemoryStore::new();
         let id = JobId::new();
-        let result = store.update_status(&id, JobStatus::Running);
+        let result = store.start(&id);
         assert!(matches!(result, Err(DomainError::JobNotFound { .. })));
+    }
+
+    #[test]
+    fn complete_sets_result() {
+        let store = InMemoryStore::new();
+        let job = test_job();
+        let id = job.id;
+        store.save(&job).unwrap();
+        store.start(&id).unwrap();
+        store.complete(&id, crate::job::job::JobResult { text: "done".into(), tokens: 5 }).unwrap();
+        let found = store.find_by_id(&id).unwrap().unwrap();
+        assert_eq!(found.status, JobStatus::Completed);
+        assert!(found.result.is_some());
+    }
+
+    #[test]
+    fn fail_sets_error() {
+        let store = InMemoryStore::new();
+        let job = test_job();
+        let id = job.id;
+        store.save(&job).unwrap();
+        store.fail(&id, "timeout".into()).unwrap();
+        let found = store.find_by_id(&id).unwrap().unwrap();
+        assert_eq!(found.status, JobStatus::Failed);
+        assert_eq!(found.error.as_deref(), Some("timeout"));
     }
 }

@@ -59,7 +59,7 @@ mod tests {
     }
 
     fn test_task() -> Task {
-        Task::new(JobId::new(), "model".into(), Message { role: "user".into(), content: "hi".into() })
+        Task::new(JobId::new(), "model".into(), Message { role: "user".into(), content: "hi".into() }, chrono::Utc::now())
     }
 
     #[test]

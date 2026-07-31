@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
+
 use super::ports::{TaskStore, WorkerPort};
 use super::task::{Task, WorkerInfo};
 use super::task_status::TaskStatus;
 use crate::job::job::{Job, JobResult};
-use crate::job::job_status::JobStatus;
+use crate::job::job_id::JobId;
 use crate::job::ports::JobStore;
 use crate::shared::DomainError;
 
@@ -40,15 +42,13 @@ impl Scheduler {
 
     /// Decomposes a job into one task per message.
     ///
-    /// Transitions the job from Pending to Running.
-    pub fn decompose(&self, job: &mut Job) -> Result<Vec<Task>, DomainError> {
-        job.transition_to(JobStatus::Running)?;
-        self.job_store.save(job)?;
+    /// Transitions the job from Pending to Running via the JobStore port.
+    pub fn decompose(&self, job_id: &JobId, messages: &[crate::job::job::Message], model: &str, now: DateTime<Utc>) -> Result<Vec<Task>, DomainError> {
+        self.job_store.start(job_id)?;
 
-        let tasks: Vec<Task> = job
-            .messages
+        let tasks: Vec<Task> = messages
             .iter()
-            .map(|msg| Task::new(job.id, job.model.clone(), msg.clone()))
+            .map(|msg| Task::new(*job_id, model.to_string(), msg.clone(), now))
             .collect();
 
         for task in &tasks {
@@ -71,7 +71,7 @@ impl Scheduler {
     /// Processes one tick: dispatch pending, check leases, retry failures.
     ///
     /// Returns the number of tasks processed.
-    pub fn tick(&self) -> Result<usize, DomainError> {
+    pub fn tick(&self, now: DateTime<Utc>) -> Result<usize, DomainError> {
         let mut processed = 0;
 
         // 1. Dispatch pending tasks
@@ -80,15 +80,15 @@ impl Scheduler {
             if task.is_permanently_failed() {
                 continue;
             }
-            self.dispatch_task(&mut task)?;
+            self.dispatch_task(&mut task, now)?;
             processed += 1;
         }
 
         // 2. Check for expired leases
         let leased = self.task_store.find_by_status(&TaskStatus::Leased)?;
         for mut task in leased {
-            if task.is_lease_expired() {
-                task.fail("lease expired".into())?;
+            if task.is_lease_expired(now) {
+                task.fail("lease expired".into(), now)?;
                 self.task_store.save(&task)?;
                 processed += 1;
             }
@@ -98,20 +98,20 @@ impl Scheduler {
         let failed = self.task_store.find_by_status(&TaskStatus::Failed)?;
         for mut task in failed {
             if !task.is_permanently_failed() {
-                task.retry()?;
+                task.retry(now)?;
                 self.task_store.save(&task)?;
                 processed += 1;
             }
         }
 
         // 4. Check if any jobs should be finalized
-        self.finalize_jobs()?;
+        self.finalize_jobs(now)?;
 
         Ok(processed)
     }
 
     /// Dispatches a single task to a worker.
-    fn dispatch_task(&self, task: &mut Task) -> Result<(), DomainError> {
+    fn dispatch_task(&self, task: &mut Task, now: DateTime<Utc>) -> Result<(), DomainError> {
         let worker = match self.next_worker() {
             Some(w) => w,
             None => return Err(DomainError::WorkerDispatchFailed {
@@ -119,16 +119,16 @@ impl Scheduler {
             }),
         };
 
-        task.lease(worker.id.clone())?;
+        task.lease(worker.id.clone(), now)?;
         self.task_store.save(task)?;
 
         match self.worker_port.dispatch(&worker.id, task) {
             Ok(_text) => {
-                task.complete()?;
+                task.complete(now)?;
                 self.task_store.save(task)?;
             }
             Err(_) => {
-                task.fail("dispatch failed".into())?;
+                task.fail("dispatch failed".into(), now)?;
                 self.task_store.save(task)?;
             }
         }
@@ -137,13 +137,13 @@ impl Scheduler {
     }
 
     /// Checks all jobs for finalization (all tasks terminal → job complete/failed).
-    fn finalize_jobs(&self) -> Result<(), DomainError> {
-        let running_jobs = {
+    fn finalize_jobs(&self, now: DateTime<Utc>) -> Result<(), DomainError> {
+        let running_jobs: Vec<Job> = {
             let all_jobs = self.job_store.list()?;
-            all_jobs.into_iter().filter(|j| j.status == JobStatus::Running).collect::<Vec<_>>()
+            all_jobs.into_iter().filter(|j| j.status == crate::job::job_status::JobStatus::Running).collect()
         };
 
-        for mut job in running_jobs {
+        for job in running_jobs {
             let tasks = self.task_store.find_by_job_id(&job.id)?;
             if tasks.is_empty() {
                 continue;
@@ -153,17 +153,15 @@ impl Scheduler {
             let any_permanently_failed = tasks.iter().any(|t| t.is_permanently_failed());
 
             if all_completed {
-                let combined_text: String = tasks
+                let total_tokens = tasks.len() as u32;
+                let combined_text = tasks
                     .iter()
-                    .map(|_t| "mock") // In V0, we combine task results
+                    .map(|t| t.message.content.as_str())
                     .collect::<Vec<_>>()
                     .join(" ");
-                let total_tokens = tasks.len() as u32;
-                job.complete(JobResult { text: combined_text.into(), tokens: total_tokens })?;
-                self.job_store.save(&job)?;
+                self.job_store.complete(&job.id, JobResult { text: combined_text, tokens: total_tokens })?;
             } else if any_permanently_failed {
-                job.fail("task retries exhausted".into())?;
-                self.job_store.save(&job)?;
+                self.job_store.fail(&job.id, "task retries exhausted".into())?;
             }
         }
 
@@ -175,10 +173,13 @@ impl Scheduler {
 mod tests {
     use super::*;
     use crate::job::job::{Message, Priority};
-    use crate::job::job_id::JobId;
     use crate::job::infrastructure::InMemoryJobStore;
     use crate::scheduler::infrastructure::{InMemoryTaskStore, MockWorkerPort};
     use crate::scheduler::worker_id::WorkerId;
+
+    fn now() -> DateTime<Utc> {
+        Utc::now()
+    }
 
     fn make_scheduler_with_mock(workers: Vec<WorkerInfo>) -> (Scheduler, Arc<MockWorkerPort>) {
         let mock = Arc::new(MockWorkerPort::new());
@@ -212,10 +213,13 @@ mod tests {
         let scheduler = make_scheduler(vec![
             WorkerInfo { id: WorkerId::new("w-0"), model: "model".into(), healthy: true },
         ]);
-        let mut job = test_job();
-        let tasks = scheduler.decompose(&mut job).unwrap();
+        let job = test_job();
+        scheduler.job_store.save(&job).unwrap();
+        let tasks = scheduler.decompose(&job.id, &job.messages, &job.model, now()).unwrap();
         assert_eq!(tasks.len(), 2);
-        assert_eq!(job.status, JobStatus::Running);
+        // Job should be Running
+        let updated = scheduler.job_store.find_by_id(&job.id).unwrap().unwrap();
+        assert_eq!(updated.status, crate::job::job_status::JobStatus::Running);
     }
 
     #[test]
@@ -223,8 +227,9 @@ mod tests {
         let scheduler = make_scheduler(vec![
             WorkerInfo { id: WorkerId::new("w-0"), model: "model".into(), healthy: true },
         ]);
-        let mut job = test_job();
-        let tasks = scheduler.decompose(&mut job).unwrap();
+        let job = test_job();
+        scheduler.job_store.save(&job).unwrap();
+        let tasks = scheduler.decompose(&job.id, &job.messages, &job.model, now()).unwrap();
         for task in &tasks {
             let found = scheduler.task_store.find_by_id(&task.id).unwrap();
             assert!(found.is_some());
@@ -236,10 +241,11 @@ mod tests {
         let scheduler = make_scheduler(vec![
             WorkerInfo { id: WorkerId::new("w-0"), model: "model".into(), healthy: true },
         ]);
-        let mut job = test_job();
-        scheduler.decompose(&mut job).unwrap();
+        let job = test_job();
+        scheduler.job_store.save(&job).unwrap();
+        scheduler.decompose(&job.id, &job.messages, &job.model, now()).unwrap();
 
-        let processed = scheduler.tick().unwrap();
+        let processed = scheduler.tick(now()).unwrap();
         assert!(processed > 0);
 
         // Tasks should be completed
@@ -254,15 +260,15 @@ mod tests {
         let scheduler = make_scheduler(vec![
             WorkerInfo { id: WorkerId::new("w-0"), model: "model".into(), healthy: true },
         ]);
-        let mut job = test_job();
+        let job = test_job();
         let job_id = job.id;
         scheduler.job_store.save(&job).unwrap();
-        scheduler.decompose(&mut job).unwrap();
+        scheduler.decompose(&job.id, &job.messages, &job.model, now()).unwrap();
 
-        scheduler.tick().unwrap();
+        scheduler.tick(now()).unwrap();
 
         let updated_job = scheduler.job_store.find_by_id(&job_id).unwrap().unwrap();
-        assert_eq!(updated_job.status, JobStatus::Completed);
+        assert_eq!(updated_job.status, crate::job::job_status::JobStatus::Completed);
     }
 
     #[test]
@@ -274,7 +280,7 @@ mod tests {
             WorkerInfo { id: w1.clone(), model: "model".into(), healthy: true },
         ]);
 
-        let mut job = Job::submit(
+        let job = Job::submit(
             "model".into(),
             vec![
                 Message { role: "user".into(), content: "a".into() },
@@ -286,8 +292,8 @@ mod tests {
         )
         .unwrap();
         scheduler.job_store.save(&job).unwrap();
-        scheduler.decompose(&mut job).unwrap();
-        scheduler.tick().unwrap();
+        scheduler.decompose(&job.id, &job.messages, &job.model, now()).unwrap();
+        scheduler.tick(now()).unwrap();
 
         let log = mock.dispatch_log();
         assert_eq!(log.len(), 4);
@@ -303,10 +309,11 @@ mod tests {
         let scheduler = make_scheduler(vec![
             WorkerInfo { id: WorkerId::new("w-0"), model: "model".into(), healthy: false },
         ]);
-        let mut job = test_job();
-        scheduler.decompose(&mut job).unwrap();
+        let job = test_job();
+        scheduler.job_store.save(&job).unwrap();
+        scheduler.decompose(&job.id, &job.messages, &job.model, now()).unwrap();
 
-        let result = scheduler.tick();
+        let result = scheduler.tick(now());
         assert!(matches!(result, Err(DomainError::WorkerDispatchFailed { .. })));
     }
 }

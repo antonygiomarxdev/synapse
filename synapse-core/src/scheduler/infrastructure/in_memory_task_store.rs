@@ -60,9 +60,10 @@ impl TaskStore for InMemoryTaskStore {
 mod tests {
     use super::*;
     use crate::job::job::Message;
+    use chrono::Utc;
 
     fn test_task() -> Task {
-        Task::new(JobId::new(), "model".into(), Message { role: "user".into(), content: "hi".into() })
+        Task::new(JobId::new(), "model".into(), Message { role: "user".into(), content: "hi".into() }, Utc::now())
     }
 
     #[test]
