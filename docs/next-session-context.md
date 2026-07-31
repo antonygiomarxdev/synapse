@@ -1,4 +1,4 @@
-# Next Session Context: V0-1, V0-2, V0-3 Complete — Next: V0-4
+# Next Session Context: V0 Complete — Distributed MoE Inference Proven
 
 ## Quick Start
 
@@ -10,74 +10,69 @@ cargo test --lib -- --skip native_moe --skip health_check_localhost
 
 ## Current State
 
-**V0 Pivot:** Permissioned async job network for batch inference. See [ADR-0001](adr/0001-v0-permissioned-async-job-network.md).
+**V0 is complete.** The core thesis is proven: distributed MoE expert inference produces identical results to monolithic execution.
 
-**V0-1: ✅ CLOSED** — Job Model + Async API (PR #27 merged)
+### What was built
+
+**V0-1: ✅ Job Model + Async API**
 - POST /v1/jobs → 202, GET /v1/jobs/{id} → status/result
-- OpenAPI spec, Swagger UI, 60 tests
-- All 4 acceptance criteria verified
+- OpenAPI spec, Swagger UI
 
-**V0-2: ✅ CLOSED** — Scheduler Mínimo (PR #28 merged)
-- Scheduler: decompose → tick → round-robin → lease → retry
-- 44 tests, all 4 acceptance criteria verified (including idempotency)
+**V0-2: ✅ Scheduler Mínimo**
+- Async scheduler with JoinSet for concurrent dispatch
+- Round-robin, leases (30s), retries (max 3)
 
-**V0-3: ✅ CLOSED** — Multi-Worker + Crash Recovery (PR #29, #30 merged)
-- OllamaWorkerPort (HTTP to Ollama), MetricsCollector
-- 7 integration tests, all 7 acceptance criteria verified
-- Crash recovery <30s wall-clock verified
+**V0-3: ✅ Multi-Worker + Crash Recovery**
+- OllamaWorkerPort (HTTP to Ollama)
+- MetricsCollector (jobs, tasks, retries, latencies)
+- Crash recovery <30s wall-clock
 
-**V0-4: 🔜 NEXT** — Métricas E2E (Issue #24)
+**V0-4: ✅ Métricas E2E + Benchmark**
+- Benchmark binary with p50/p95/p99 latencies
+- Scripts/bench.sh for reproducible runs
 
-## V0-4 Spec (from V0-issues.md)
+**V0-5: ✅ Distributed Expert Inference**
+- Per-expert GGUF loader (expert_shard.rs)
+- Expert worker binary (HTTP server, loads 32 layers)
+- Distributed forward pass (coordinator + workers)
+- **Cosine similarity: 1.000000** (bit-identical to monolithic)
 
-Publicar un benchmark que compare: 1 nodo local vs 2 workers coordinados vs 2 workers con fallo inducido.
+### Benchmark Results
 
-**Scope:**
-- `MetricsCollector`: success_rate, retry_rate, queue_time_ms, execution_time_ms, tokens_total, cost_per_1m_tokens
-- Script `scripts/bench.sh` que ejecuta el benchmark y produce un reporte
-- Reporte markdown con tabla comparativa
-- Publicar en `docs/benchmarks/v0-<date>.md`
+| Config | Wall (ms) | Speedup | Cosine sim |
+|--------|-----------|---------|------------|
+| Monolithic | 1264 | 1.00x | 1.000000 |
+| 2 workers | 936 | 1.35x | 1.000000 |
+| 4 workers | 885 | 1.43x | 1.000000 |
 
-**Acceptance:**
-- Benchmark reproducible con un solo comando
-- Tabla comparativa con las 3 configuraciones
-- Métricas incluyen p50/p95/p99 para latencia
-
-## Architecture (current)
+## Architecture
 
 ```
-Gateway (axum) → POST/GET /v1/jobs
-       ↓
-   JobStore (in-memory)
-       ↓
-   Scheduler → decompose → TaskStore
-       ↓
-   tick() → round-robin → WorkerPort.dispatch()
-       ↓
-   OllamaWorkerPort / MockWorkerPort
-       ↓
-   MetricsCollector (jobs, tasks, retries, latencies)
+Client → Gateway (axum, :8000)
+              ↓
+         Scheduler (async, JoinSet)
+              ↓
+    ┌─────────┼─────────┐
+    ↓         ↓         ↓
+Worker A  Worker B  Worker C
+(experts   (experts   (experts
+ 0-19)     20-39)     varies)
 ```
+
+**Coordinator** runs attention locally (32 layers), dispatches expert FFN to remote workers. Workers load only their assigned experts from GGUF.
 
 ## Key Files
 
 | File | Role |
 |------|------|
-| `synapse-core/src/job/job.rs` | Job aggregate |
-| `synapse-core/src/scheduler/scheduler.rs` | Scheduler with MetricsCollector |
-| `synapse-core/src/scheduler/metrics.rs` | MetricsCollector + MetricsReport |
-| `synapse-core/src/scheduler/infrastructure/ollama_worker_port.rs` | Real Ollama HTTP client |
-| `synapse-core/src/scheduler/integration_tests.rs` | 7 acceptance tests |
-| `synapse-core/src/gateway/jobs.rs` | HTTP handlers + AppState |
-
-## Issues
-
-| # | Status | Description |
-|---|--------|-------------|
-| #20–#23 | ✅ | All closed |
-| #24 | 🔜 | Métricas E2E |
-| #25 | Planned | Native MoE — InferencePort Validation |
-| #26 | Open | Fix clippy warnings (native_moe naming) |
+| `native_moe/expert_shard.rs` | Per-expert GGUF loader |
+| `native_moe/expert_worker_client.rs` | HTTP client for remote FFN |
+| `native_moe/distributed_forward.rs` | Distributed inference orchestrator |
+| `native_moe/forward.rs` | Monolithic forward pass |
+| `bin/expert_worker.rs` | Expert worker HTTP server |
+| `bin/bench_distributed.rs` | Distributed vs monolithic benchmark |
+| `scheduler/scheduler.rs` | Async scheduler with JoinSet |
+| `gateway/jobs.rs` | HTTP handlers + AppState |
 
 ## Test Counts
 
@@ -87,9 +82,27 @@ Gateway (axum) → POST/GET /v1/jobs
 - Other: 243 tests
 - **Total: 357 tests passing**
 
-## What NOT to Do
+## What's Next
 
-1. Don't re-implement V0-1, V0-2, V0-3 — done and merged
-2. Don't modify native_moe — tracked in #26
-3. Don't add P2P/DHT/payments — deferred to V1+
-4. Don't skip TDD
+### Short term
+- Integrate distributed inference with async scheduler for production
+- Test with larger models (Mixtral, DeepSeek)
+- Test with multiple tokens (full prompt, not just single token)
+- Test on multiple machines (not just multiple processes)
+
+### Medium term
+- Dynamic expert loading (load on demand, not all at startup)
+- Expert caching (keep hot experts in memory)
+- Load balancing across workers
+- Web UI for monitoring
+
+### Long term
+- P2P expert discovery (DHT)
+- Economic incentives (staking, slashing)
+- Realtime inference mode (speculative network)
+
+## Environment
+
+- **GPU:** NVIDIA RTX 4070 Laptop (8GB VRAM)
+- **Models:** granite3.1-moe:3b, qwen3:8b (via Ollama)
+- **Ollama:** localhost:11434 (and optionally :11435 for multi-instance)

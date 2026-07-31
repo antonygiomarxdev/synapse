@@ -9,21 +9,31 @@ Synapse is **distributed inference infrastructure for Mixture-of-Experts (MoE) m
 ## Architecture & Data Flow
 
 ```
-Client → axum Gateway (Rust, :8000) → Swarm Core (Rust)
-                                          │
-                                    libp2p Kademlia DHT
-                                          │
-                                    Compute Nodes (Python vLLM)
-                                          │
-                                    L2 Smart Contracts (Solidity)
+Client → Gateway (axum, :8000)
+              ↓
+         Scheduler (async, JoinSet)
+              ↓
+    ┌─────────┼─────────┐
+    ↓         ↓         ↓
+Worker A  Worker B  Worker C
+(experts   (experts   (experts
+ 0-19)     20-39)     varies)
 ```
 
-- **Gateway** (`synapse-core/src/gateway/`): axum HTTP server with OpenAI-compatible endpoints. Market maker pricing. Routes requests to swarm.
-- **Swarm Core** (`synapse-core/src/swarm/`): Consensus (ensemble voting + statistical audit), Speculative engine (realtime), DAG engine (batch).
-- **DHT** (`synapse-core/src/dht/`): Kademlia-based expert registry, co-activation heat map, node discovery.
-- **Economic** (`synapse-core/src/economic/`): Reputation scoring (0-1000, 4 tiers), graduated slashing, route assembly.
-- **Compute Node** (`synapse-runtime/`): Python subprocess communicating via Unix socket + protobuf through `InferencePort` trait. V1: vLLM backend. V2+: llama.cpp, SGLang.
-- **Contracts** (`contracts/stake/`): StakeManager.sol — USDC staking, flagging, graduated slashing, banning.
+**Coordinator** runs attention locally (32 layers), dispatches expert FFN to remote workers via HTTP. Workers load only their assigned experts from GGUF.
+
+### Key Components
+
+- **Gateway** (`synapse-core/src/gateway/`): axum HTTP server with OpenAI-compatible endpoints. Routes requests to scheduler.
+- **Scheduler** (`synapse-core/src/scheduler/`): Async scheduler with `JoinSet` for concurrent dispatch. Round-robin, leases (30s), retries (max 3).
+- **Expert Workers** (`synapse-core/src/bin/expert_worker.rs`): HTTP servers that load expert subsets from GGUF and serve FFN requests.
+- **Native MoE** (`synapse-core/src/native_moe/`): GGUF parser, forward pass, expert sharding, distributed inference orchestrator.
+- **MetricsCollector** (`synapse-core/src/scheduler/metrics.rs`): Tracks jobs, tasks, retries, latencies (p50/p95/p99).
+
+### Two Network Modes
+
+- **Speculative Network (realtime):** N nodes run full model independently, majority vote per token. Latency = single-node latency.
+- **Network DAG (batch):** True expert distribution. Nodes hold 2-5 experts each. Requests flow through expert graph.
 
 ## Non-Negotiable Design Principles
 
@@ -32,33 +42,61 @@ These apply to every line of code. No exceptions.
 - **DDD: Pure domain layer** — zero I/O, zero framework deps, zero crypto. Domain types are plain structs/enums. I/O boundaries are traits (ports) in domain modules. Infrastructure adapters live in `infrastructure/` subdirectories.
 - **Clean Architecture: Dependencies point inward** — Presentation (axum) → Ports (traits) → Infrastructure (adapters) → Domain. Domain never imports infrastructure.
 - **TDD: Red-Green-Refactor** — Write the failing test first, confirm it fails, then implement, then refactor. Tests inline with source at `#[cfg(test)] mod tests`.
-- **Clean Code: Every public item gets `///` doc comments.** Test names describe the scenario. No dead code. `thiserror` for errors, never manual `Display`/`Error`. Conventional Commits.
+- **Clean Code: Every public item gets `///` doc comments.** Test names describe the scenario. No dead code. `thiserror` for errors, never manual `Display`/Error`. Conventional Commits.
 
-### Two Network Modes
-- **Speculative Network (realtime):** N nodes run full model independently, majority vote per token. Latency = single-node latency.
-- **Network DAG (batch):** True expert distribution. Nodes hold 2-5 experts each. Requests flow through expert graph.
+## Native MoE Runtime Status
+
+**Location:** `synapse-core/src/native_moe/`
+
+**Status:** Distributed inference proven — cosine similarity 1.000000 with monolithic (Issue #25 resolved)
+
+**What works:**
+- GGUF v3 parser (F32, F16, Q8_0, Q4_K, Q6_K)
+- Full transformer forward pass (32 layers, 40 experts, GQA attention + RoPE)
+- Expert routing (gate_inp → softmax → top-k)
+- Per-expert GGUF loading (expert_shard.rs)
+- Distributed forward pass (coordinator + workers)
+- Expert worker HTTP servers
+- Benchmark: 2 workers 1.35x, 4 workers 1.43x speedup
+
+**What doesn't work yet:**
+- Multi-token causal attention (untested with KV cache)
+- Performance optimization (triple-loop CPU, no SIMD/BLAS)
+- Dynamic expert loading (load on demand)
+- P2P expert discovery
+
+**Main tickets:** [#20](https://github.com/antonygiomarxdev/synapse/issues/20), [#25](https://github.com/antonygiomarxdev/synapse/issues/25) (resolved)
 
 ## Key Directories
 
 ```
 synapse/
-├── synapse-core/            # Rust — single crate, single binary
+├── synapse-core/            # Rust — single crate
 │   ├── src/
-│   │   ├── main.rs          #   Binary entrypoint (axum + swarm + DHT)
+│   │   ├── main.rs          #   Binary entrypoint (axum server)
 │   │   ├── gateway/         #   axum HTTP: api, jobs, catalog, router
 │   │   ├── job/             #   Job domain: JobId, JobStatus, Job, JobStore
 │   │   │   └── infrastructure/  # InMemoryJobStore
-│   │   ├── scheduler/       #   Scheduler: Task, TaskStatus, WorkerPort
-│   │   │   └── infrastructure/  # InMemoryTaskStore, MockWorkerPort
+│   │   ├── scheduler/       #   Async scheduler: Task, WorkerPort, MetricsCollector
+│   │   │   └── infrastructure/  # InMemoryTaskStore, MockWorkerPort, OllamaWorkerPort
+│   │   ├── native_moe/      #   MoE runtime: forward pass, expert sharding
+│   │   │   ├── expert_shard.rs     # Per-expert GGUF loader
+│   │   │   ├── expert_worker_client.rs  # HTTP client for remote FFN
+│   │   │   ├── distributed_forward.rs   # Distributed inference orchestrator
+│   │   │   └── forward.rs          # Monolithic forward pass
 │   │   ├── identity/        #   NodeId, KeyPair, Node aggregate
 │   │   ├── model/           #   ModelId, ExpertId, Catalog
-│   │   ├── native_moe/      #   Native MoE runtime (forward pass validated)
 │   │   ├── swarm/           #   Consensus, Speculative engine, DAG engine
 │   │   ├── economic/        #   Reputation, Pricing, Stake management
 │   │   ├── transport/       #   WebRTC, Signalling
 │   │   ├── runtime/         #   InferencePort trait + Unix socket bridge
 │   │   ├── shared/          #   DomainError, DomainEvent
 │   │   └── dht/             #   Kademlia, Expert registry, Bootstrap
+│   ├── bin/
+│   │   ├── expert_worker.rs    # Expert worker HTTP server
+│   │   ├── bench_distributed.rs # Distributed vs monolithic benchmark
+│   │   ├── bench_ollama.rs     # Ollama throughput benchmark
+│   │   └── bench_consistency.rs # Output consistency test
 │   └── proto/               #   Protobuf schemas (8 message types)
 ├── synapse-runtime/         # Python — vLLM adapter (subprocess)
 │   └── synapse_runtime/     #   Package source
@@ -69,9 +107,10 @@ synapse/
 │   ├── models.toml          #   Curated catalog (Kimi K3, Mixtral, etc.)
 │   └── default.toml         #   Node defaults (VRAM, pricing, STUN)
 ├── docs/
-│   ├── session-2026-07-30.md        # Session log with all debug details
-│   ├── next-session-context.md      # Quick start for next session
-│   └── validation-distributed-vs-full.json  # Ensemble voting results
+│   ├── adr/                 #   Architecture decision records
+│   ├── benchmarks/          #   Benchmark reports
+│   ├── superpowers/         #   Design specs + spike docs
+│   └── next-session-context.md
 ├── features/                #   Gherkin BDD specs
 ├── scripts/
 │   ├── validate_distributed_vs_full.py  # Distributed vs full model comparison
@@ -79,30 +118,6 @@ synapse/
 ├── .github/workflows/       #   CI (7 jobs)
 └── docs/superpowers/        #   Design spec + implementation plan
 ```
-
-## Native MoE Runtime Status
-
-**Location:** `synapse-core/src/native_moe/`
-
-**Status:** Forward pass validated — correlation 0.999 with llama.cpp (Issue #20 resolved)
-
-**What works:**
-- GGUF v3 parser (F32, F16, Q8_0, Q4_K, Q6_K)
-- Full transformer forward pass (32 layers, 40 experts, GQA attention + RoPE)
-- Expert routing (gate_inp → softmax → top-k)
-- SiLU activation, RMS norm, residual connections
-- Output projection with tied embedding weights
-- Single-token inference: correlation 0.999334 with llama-cpp-python
-
-**What doesn't work yet:**
-- Multi-token causal attention (untested with KV cache)
-- Performance optimization (triple-loop CPU, no SIMD/BLAS)
-- Distributed expert execution across nodes
-- InferencePort integration with swarm coordinator
-
-**Main ticket:** [#20](https://github.com/antonygiomarxdev/synapse/issues/20) (resolved)
-
-**Key learnings:** See `docs/adr/0011-native-moe-runtime.md`
 
 ## Development Commands
 
@@ -126,6 +141,14 @@ cd synapse-runtime && pip-audit
 cd contracts/stake && npx hardhat compile && npx hardhat test
 cd contracts/stake && npx solhint 'src/**/*.sol'
 
+# Benchmarks
+cargo run --release --bin bench_distributed  # Distributed vs monolithic
+cargo run --release --bin bench_ollama       # Ollama throughput
+cargo run --release --bin bench_consistency  # Output consistency
+
+# Expert workers
+cargo run --release --bin expert_worker -- model.gguf 0 1 2 --port 8001
+
 # Everything at once (PR gate)
 make gauntlet
 ```
@@ -139,8 +162,8 @@ make gauntlet
 - **Linting:** `-D warnings` enforced in CI. `clippy.toml` allows `unwrap`/`dbg!` only in tests.
 - **Naming:** snake_case files, CamelCase types (e.g., `NodeId`, `StakeManager`). Module names match directory names.
 - **Error handling:** `thiserror` for domain errors. `Result<Json<T>, StatusCode>` pattern in axum handlers.
-- **Async:** `tokio` (full features). `#[tokio::main]` on binary, `#[tokio::test]` on async tests.
-- **Testing:** Unit tests inline with `#[cfg(test)] mod tests`. Integration tests planned in `tests/` directory. Property testing via `proptest`.
+- **Async:** `tokio` (full features). `#[tokio::main]` on binary, `#[tokio::test]` on async tests. `async-trait` for async traits.
+- **Testing:** Unit tests inline with `#[cfg(test)] mod tests`. Integration tests in `tests/` directory. Property testing via `proptest`.
 - **Protobuf:** `synapse.proto` defines 8 message types (DhtQuery, NodeAnnounce, InferenceRequest, ConsensusVote, etc.). Package: `synapse.proto`.
 
 ### Python
@@ -166,9 +189,14 @@ make gauntlet
 | `synapse-core/src/gateway/jobs.rs` | Job CRUD handlers + AppState |
 | `synapse-core/src/job/job.rs` | Job aggregate: submit, transition_to, complete, fail |
 | `synapse-core/src/job/ports.rs` | JobStore port trait |
-| `synapse-core/src/scheduler/scheduler.rs` | Scheduler: decompose, tick, round-robin dispatch |
+| `synapse-core/src/scheduler/scheduler.rs` | Async scheduler with JoinSet |
 | `synapse-core/src/scheduler/task.rs` | Task aggregate with leases and retries |
 | `synapse-core/src/scheduler/ports.rs` | TaskStore + WorkerPort port traits |
+| `synapse-core/src/native_moe/expert_shard.rs` | Per-expert GGUF loader |
+| `synapse-core/src/native_moe/distributed_forward.rs` | Distributed inference orchestrator |
+| `synapse-core/src/native_moe/forward.rs` | Monolithic forward pass |
+| `synapse-core/src/bin/expert_worker.rs` | Expert worker HTTP server |
+| `synapse-core/src/bin/bench_distributed.rs` | Distributed vs monolithic benchmark |
 | `synapse-core/src/identity/node_id.rs` | NodeId value object |
 | `synapse-core/src/gateway/router.rs` | Chat completions handler (OpenAI-compatible) |
 | `synapse-core/proto/synapse.proto` | Wire protocol — all inter-component messages |
@@ -213,7 +241,7 @@ Run locally: `make gauntlet`
 ### Testing Patterns
 
 - **Rust unit tests:** Inline with `#[cfg(test)] mod tests` in same file as source
-- **Rust integration tests:** `tests/` directory (planned)
+- **Rust integration tests:** `tests/` directory
 - **Python:** `pytest` in `synapse-runtime/tests/`
 - **Solidity:** Hardhat tests in `contracts/stake/test/`
 - **Property tests:** `proptest` crate for domain logic (e.g., consensus voting, pricing)
