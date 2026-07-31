@@ -92,6 +92,15 @@ pub enum DomainError {
 
     #[error("invalid job: {reason}")]
     InvalidJob { reason: String },
+
+    #[error("invalid task transition: {from} → {to}")]
+    InvalidTaskTransition { from: String, to: String },
+
+    #[error("task not found: {task_id}")]
+    TaskNotFound { task_id: String },
+
+    #[error("worker dispatch failed: {reason}")]
+    WorkerDispatchFailed { reason: String },
 }
 
 // SAFETY: DomainError contains f64 only in InvalidTokenLogProb, and

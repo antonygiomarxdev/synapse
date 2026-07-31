@@ -59,6 +59,7 @@ pub async fn serve_on(listener: tokio::net::TcpListener) {
 pub fn build_router() -> Router {
     let state = jobs::AppState {
         job_store: Arc::new(InMemoryJobStore::new()),
+        scheduler: None,
     };
     build_router_with_state(state)
 }

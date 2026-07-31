@@ -1,104 +1,88 @@
-# Next Session Context: Native MoE Runtime — Forward Pass Validated
+# Next Session Context: V0-1 + V0-2 Complete, Next: V0-3
 
 ## Quick Start
 
-```
-cd /home/ksante/orca/workspaces/synapse/issue-13-session-2026-07
-cargo test --release --lib single_token_logits -- --nocapture
+```bash
+cd /home/ksante/dev/synapse
+git checkout main && git pull
+cargo test --lib -- --skip native_moe
 ```
 
 ## Current State
 
-**Issue #20: ✅ RESOLVED** — Correlation 0.999334 (>0.99 target)
+**V0 Pivot:** Permissioned async job network for batch inference. See [ADR-0001](adr/0001-v0-permissioned-async-job-network.md).
 
-Forward pass produces logits that match llama-cpp-python with correlation 0.999.
+**V0-1: ✅ CLOSED** — Job Model + Async API (PR #27 merged)
+- `POST /v1/jobs` → 202 Accepted + job_id
+- `GET /v1/jobs/{id}` → status, result, error
+- OpenAI-compatible format, OpenAPI spec, Swagger UI
+- 60 tests (47 domain + 11 gateway + 3 API)
 
-## What's Working
+**V0-2: ✅ CLOSED** — Scheduler Mínimo (PR #28 merged)
+- Scheduler: decompose job → tasks, tick(), round-robin dispatch
+- Leases: 30s timeout per task
+- Retries: max 3 per task, then job fails
+- 44 tests (TaskId, TaskStatus, Task, TaskStore, WorkerPort, Scheduler)
 
-- **Full forward pass:** 32 layers, single-token, correlation 0.999 with llama.cpp
-- **Dequantization:** Q8_0, Q4_K, Q6_K — all produce correct values in correct order
-- **Attention:** GQA with RoPE, correct for single-token inference
-- **MoE FFN:** Gate routing + SiLU + weighted expert aggregation
-- **Residual connections:** `hidden = residual + 0.22 * sublayer_output`
-- **Output norm + logits:** tied embedding weights, logit_scale=6.0
+**V0-3: 🔜 NEXT** — Multi-Worker + Crash Recovery (Issue #23)
+- 2 workers via Ollama (granite3.1-moe:3b + qwen3:8b)
+- Round-robin dispatch between workers
+- Crash test: kill worker-0 mid-job → worker-1 rescues
+- Heartbeat: workers → coordinator
+- Acceptance: 50 jobs with 2 workers → ≥95% success, crash recovery <30s
 
-## Bug Fixed This Session
+## Architecture (current)
 
-**Q6_K element ordering** (`synapse-core/src/native_moe/quant.rs`):
-- ggml outputs: all q1(l=0..31), all q2(l=0..31), all q3(l=0..31), all q4(l=0..31)
-- We were outputting: q1(l=0),q2(l=0),q3(l=0),q4(l=0),q1(l=1)...
-- Affected: `attn_v` (Q6_K) and `ffn_down_exps` (Q6_K)
-- Fix: changed loop order in `dequant_q6_k_raw()`
+```
+Gateway (axum) → POST/GET /v1/jobs
+       ↓
+   JobStore (in-memory)
+       ↓
+   Scheduler → decompose → TaskStore
+       ↓
+   tick() → round-robin → WorkerPort.dispatch()
+       ↓
+   Worker (MockWorker for V0, real in V0-3)
+```
 
-## Previous Bugs (already fixed, don't redo)
-
-1. Embedding indexing: `data[t * d + dim]` (column-major)
-2. Expert weight indexing: `data[e * d_ff * d_model + j * d_model + d]`
-3. Gate_inp indexing: `data[e * d_model + d]`
-4. mat_vec_transposed: stride `data[i + j * ne0]`
-5. Softmax routing: apply to ALL scores before top-k
-6. Expert scores normalization: normalize to sum to 1
-7. attention_scale: use model's (0.015625)
-
-## Next Steps for the Project
-
-### 1. Multi-token verification
-The single-token forward is validated. Need to verify multi-token (causal attention with KV cache). The RoPE for pos>0 needs testing.
-
-### 2. Performance optimization
-Current forward pass is triple-loop pure Rust. Needs:
-- SIMD/BLAS for mat_vec_transposed
-- Parallel expert execution
-- Cache-friendly memory access patterns
-
-### 3. Distributed expert execution (the real goal)
-The whole point of the native runtime is to enable distributed inference where:
-- N nodes each hold a subset of experts
-- Coordinator routes requests to nodes with the needed experts
-- Each node executes only its local experts
-- Results are aggregated with routing scores
-
-Key files for this:
-- `synapse-core/src/native_moe/runtime.rs` — InferencePort implementation
-- `synapse-core/src/swarm/coordinator.rs` — ExpertRouter, GateInpLayer
-- `synapse-core/src/transport/` — WebRTC, signaling
-
-### 4. InferencePort integration
-`NativeMoeRuntime` needs to implement `InferencePort` trait properly so it can be used by the swarm coordinator. The trait is defined but the integration is incomplete.
-
-### 5. Model support
-Currently only Granite MoE 3B. Need to generalize for other MoE models (Mixtral, DeepSeek, Kimi K3).
-
-## Reference Values
-
-**Model:** Granite MoE 3B (GGUF, Q4_K/Q6_K quantization)
-- d_model=1536, n_heads=24, n_kv_heads=8, head_dim=64
-- n_layers=32, n_experts=40, n_expert_used=8, d_ff=512
-- vocab_size=49155, rope_theta=1e7
-- embedding_scale=12.0, residual_scale=0.22, logit_scale=6.0, attention_scale=0.015625
-
-**Reference logits (token 49, single):**
-- mean: -2.72, max: 12.60, top-5: [34, 36, 35, 37, 308]
-
-**Our logits (token 49, single):**
-- mean: -2.60, max: 12.53, top-5: [34, 36, 35, 308, 37]
-- correlation: 0.999334
-
-## Files
+## Key Files
 
 | File | Role |
 |------|------|
-| `synapse-core/src/native_moe/forward.rs` | Forward pass, attention, FFN, RoPE |
-| `synapse-core/src/native_moe/model.rs` | Model loading, config |
-| `synapse-core/src/native_moe/quant.rs` | Dequantization (Q8_0, Q4_K, Q6_K) |
-| `synapse-core/src/native_moe/gguf.rs` | GGUF v3 parser |
-| `synapse-core/src/native_moe/ops.rs` | Low-level tensor ops |
-| `synapse-core/src/native_moe/runtime.rs` | InferencePort implementation |
-| `docs/adr/0011-native-moe-runtime.md` | Architecture decision record |
+| `synapse-core/src/job/job.rs` | Job aggregate: submit, transition_to, complete, fail |
+| `synapse-core/src/job/ports.rs` | JobStore trait |
+| `synapse-core/src/job/infrastructure/in_memory_job_store.rs` | In-memory store |
+| `synapse-core/src/scheduler/scheduler.rs` | Scheduler: decompose, tick, round-robin |
+| `synapse-core/src/scheduler/task.rs` | Task aggregate with leases and retries |
+| `synapse-core/src/scheduler/ports.rs` | TaskStore + WorkerPort traits |
+| `synapse-core/src/scheduler/infrastructure/mock_worker_port.rs` | Mock worker for testing |
+| `synapse-core/src/gateway/jobs.rs` | HTTP handlers + AppState |
+| `synapse-core/src/gateway/api.rs` | Router builder + OpenAPI |
+| `synapse-core/src/shared/domain_error.rs` | All domain errors |
+
+## Issues
+
+| # | Status | Description |
+|---|--------|-------------|
+| #20 | ✅ | Native MoE forward pass |
+| #21 | ✅ | Job Model + Async API |
+| #22 | ✅ | Scheduler Mínimo |
+| #23 | 🔜 | Multi-Worker + Crash Recovery |
+| #24 | Planned | Métricas E2E |
+| #25 | Planned | Native MoE — InferencePort Validation |
+| #26 | Open | Fix clippy warnings (native_moe naming) |
+
+## Test Counts
+
+- Job module: 49 tests
+- Scheduler module: 44 tests
+- Gateway: 14 tests
+- Other (identity, swarm, economic, etc.): 234 tests
+- **Total: 341 tests passing** (native_moe excluded — OOMs in parallel)
 
 ## What NOT to Do
 
-1. Don't re-verify single-token forward — already at 0.999 correlation
-2. Don't re-verify dequantization — Q4_K and Q6_K are correct
-3. Don't re-verify layer-by-layer hidden states — already compared with llama.cpp
-4. Don't try ensemble voting — already done, gives 0.79 correlation
+1. Don't re-implement V0-1 or V0-2 — already done and merged
+2. Don't modify native_moe — it works, clippy warnings are tracked in #26
+3. Don't add P2P/DHT/payments — deferred to V1+
+4. Don't skip TDD — write tests first for V0-3

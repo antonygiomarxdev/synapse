@@ -17,45 +17,29 @@
 
 ## Where we are (July 2026)
 
-Synapse is in **thesis validation**. We're not building a global P2P marketplace yet. We're answering one question first: does the core technical idea work?
+Synapse has pivoted to **V0: a permissioned async job network for batch inference**. The original P2P vision is deferred until the core coordination is validated. See [ADR-0001](docs/adr/0001-v0-permissioned-async-job-network.md).
 
-### ✅ Validated
+### V0 Progress
+
+| Issue | Status | Description |
+|---|---|---|
+| #20 | ✅ Closed | Native MoE forward pass — correlation 0.999 with llama.cpp |
+| #21 | ✅ Closed | Job Model + Async API — POST/GET /v1/jobs, 60 tests |
+| #22 | ✅ Closed | Scheduler Mínimo — round-robin, leases (30s), retries (max 3), 44 tests |
+| #23 | 🔜 Next | Multi-Worker + Crash Recovery |
+| #24 | Planned | Métricas E2E |
+| #25 | Planned | Native MoE Runtime — InferencePort Validation |
+
+### Validated (pre-pivot)
 
 | Claim | Evidence |
 |---|---|
-| Rust ↔ Python worker via Unix socket + protobuf works | [Spike: vLLM viability](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md) — 100% success, <2ms overhead |
-| Real GPU inference works through the pipeline | Qwen3 8B + Ollama backend — 100% success, 40 tok/s |
-| **MoE model runs through the pipeline** | **IBM Granite 3.1 MoE 3B — 40 experts, 8 active, 100% success** |
-| InferencePort abstraction is real | 3 backends (vLLM, Ollama, Mock) swapped without changing protocol |
-| NVML driver issues on Linux | [Documented workaround](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md#72-intento-con-gpu-real--bloqueado-por-driver-mismatch-2026-07-29) (reboot fixes it) |
-| vLLM + MoE needs >8 GB VRAM | [Documented](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md#73-gpu-real--ollama--qwen3-8b-q4_k_m-2026-07-29) — Qwen-MoE-A2.7B in FP16 = 7.1 GiB weights alone |
-| llama.cpp + GGUF fits MoE in 8 GB | Granite MoE 3B Q4_K_M = ~2 GB, works perfectly |
-| **Expert sharding is possible** | **Granite MoE 3B split into 2 shards (20 experts each), loads and generates text in Ollama** — 1.06 GB per shard vs 1.9 GB original |
-| **GGUF format natively supports expert slicing** | [Spike: expert sharding](docs/superpowers/spikes/2026-07-29-expert-sharding-spike.md) — `data[0:20]` numpy slicing, no dequantization needed |
-| **Expert specialisation is real** | Shards produce divergent outputs — experts 0-19 and 20-39 learned different knowledge |
-| **Shared layers are identical across shards** | 194/194 tensors verified bit-identical — coordinator doesn't need full model |
-| **Coordinator routing validated** | gate_inp weights (384 KB total) + hidden state = routing decision, proven in [numpy spike](scripts/spike_moe_routing.py) and [Rust binary](synapse-core/src/bin/moe_routing.rs) — 8/8 experts identical vs direct broadcast |
-| **Coordinator V0 (Rust)** | `GateInpLayer`, `ExpertRoute`, `ExpertRouter` trait, `RoundRobinRouter` — domain types with tests |
-| Same principle as ESP32-AI | [Slava S ran 28.9M params on 512KB SRAM](https://www.tomshardware.com/tech-industry/artificial-intelligence/ai-developer-runs-28-9-million-parameter-model-on-usd10-esp32-s3-microcontroller-uses-googles-per-layer-embeddings-technique-stores-table-on-16mb-flash-memory) — wrote his own runtime, we wrote our own splitter |
-
-### 🔄 In progress
-
-| What | Status |
-|---|---|
-| Worker dispatch (Unix socket + protobuf) | Pattern validated in spike.rs, pending coordinator integration |
-| Crash recovery / fault tolerance | Spike designed, pending |
-| Job model + async batch API | Next (MVP design phase) |
-| 2+ node real network | Needs more hardware or cloud GPUs |
-
-### ⏳ Post-MVP (not built yet)
-
-Everything below is **design intent, not working code**:
-- DHT / Kademlia node discovery
-- P2P expert distribution
-- Consensus / slashing / staking
-- On-chain payments (L2)
-- WebRTC transport
-- OpenAI-compatible chat streaming
+| Rust ↔ Python worker via Unix socket + protobuf | [Spike](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md) — 100% success, <2ms overhead |
+| Real GPU inference through the pipeline | Qwen3 8B + Ollama — 100% success, 40 tok/s |
+| MoE model through the pipeline | Granite 3.1 MoE 3B — 40 experts, 8 active, 100% success |
+| Native MoE forward pass | Correlation 0.999334 with llama-cpp-python (single token) |
+| Expert sharding | Granite MoE split into 2 shards, loads and generates in Ollama |
+| Coordinator routing | gate_inp weights + hidden state = routing decision, 8/8 experts identical |
 
 ---
 
@@ -84,24 +68,24 @@ cd synapse
 # Build
 cargo build --release
 
-# Run all tests (gauntlet)
-make gauntlet
+# Run all tests
+cargo test --lib -- --skip native_moe
 
-# Start the gateway (health + model list endpoints)
+# Start the gateway
 cargo run --release
 # → Gateway on http://0.0.0.0:8000
-
-# Run the viability spike (Rust → Python → GPU inference)
-cargo run --bin spike -- --test=smoke --model=ollama:granite3.1-moe:3b
 ```
 
 ### What `cargo run` actually does
 
-The gateway binary currently serves:
+The gateway serves:
 - `GET /health` → `{"status": "ok"}`
-- `GET /v1/models` → hardcoded Kimi K3 catalog entry
+- `GET /v1/models` → model catalog
+- `POST /v1/jobs` → submit async inference job (202 Accepted)
+- `GET /v1/jobs/{id}` → poll job status/result
+- `GET /swagger-ui/` → OpenAPI documentation
 
-The `/v1/chat/completions` endpoint is a mock — it echoes back a static response. Real inference goes through the `spike` binary, which is a separate experiment (see spike doc).
+The job API is real — it creates jobs, stores them, and returns status. The scheduler dispatches tasks to workers with round-robin, leases, and retries. Worker integration (actual inference) is the next step (#23).
 
 ---
 
@@ -112,37 +96,41 @@ The `/v1/chat/completions` endpoint is a mock — it echoes back a static respon
 │              SYNAPSE NODE (Rust binary)                  │
 │                                                          │
 │  ┌──────────────────────┐                                │
-│  │  Gateway (axum)      │  ← /health, /v1/models (real) │
-│  │  /v1/chat/completions│  ← mock, pending batch API     │
+│  │  Gateway (axum)      │  ← /health, /v1/models        │
+│  │  /v1/jobs            │  ← POST (create), GET (poll)  │
+│  │  /swagger-ui/        │  ← OpenAPI docs               │
+│  └──────────┬───────────┘                                │
+│             │                                            │
+│  ┌──────────▼───────────┐                                │
+│  │  Scheduler           │  ← round-robin, leases, retry │
+│  │  decompose → tick    │     30s timeout, max 3 retries│
+│  └──────────┬───────────┘                                │
+│             │                                            │
+│  ┌──────────▼───────────┐                                │
+│  │  WorkerPort (trait)  │  ← dispatch to inference      │
+│  │  MockWorker (V0)     │     Real workers in V0-3      │
 │  └──────────────────────┘                                │
 │                                                          │
 │  ┌──────────────────────┐                                │
-│  │  Spike (experiment)  │  ← Rust → Python worker        │
-│  │  src/bin/spike.rs    │     Unix socket + protobuf     │
-│  └──────────┬───────────┘     validates the pipeline      │
-│             │                                              │
-│    Unix socket + protobuf (spike.proto)                   │
-│             │                                              │
-│  ┌──────────▼───────────┐                                │
-│  │  Python Runtime      │  ← vLLM / Ollama / Mock        │
-│  │  synapse_runtime/    │     interchangeable backends   │
+│  │  JobStore / TaskStore│  ← in-memory for V0           │
 │  └──────────────────────┘                                │
 └──────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Tech stack (all implemented)
+## Tech stack
 
 | Layer | Language | What's built |
 |---|---|---|
-| Gateway | Rust (axum) | Health, model list, chat mock |
-| Spike coordinator | Rust (tokio) | Worker spawn, dispatch, metrics, crash test |
-| Inference runtime | Python | vLLM, Ollama, Mock backends via Unix socket |
+| Gateway | Rust (axum) | Health, models, job CRUD, OpenAPI/Swagger |
+| Job domain | Rust | JobId, JobStatus, Job aggregate, JobStore port |
+| Scheduler | Rust | TaskId, Task, Scheduler, round-robin, leases, retries |
+| Task domain | Rust | TaskStatus, WorkerId, TaskStore, WorkerPort |
+| Inference runtime | Python | vLLM, Ollama, Mock backends (V0-3 integration) |
 | Identity | Rust | NodeId (SHA-256 of Ed25519) |
-| Model catalog | Rust | ModelId, ModelEntity, hardcoded list |
-| Protocol | Protobuf | spike.proto (SpikeRequest/SpikeResponse) |
-| Stubs (not built) | Rust | DHT, WebRTC, Swarm, Economic, Slashing |
+| Model catalog | Rust | ModelId, ModelEntity |
+| Native MoE | Rust | GGUF parser, forward pass (correlation 0.999) |
 
 ---
 
@@ -150,30 +138,32 @@ The `/v1/chat/completions` endpoint is a mock — it echoes back a static respon
 
 ```
 synapse/
-├── synapse-core/            # Rust — single binary + spike
+├── synapse-core/            # Rust — single crate, single binary
 │   ├── src/
-│   │   ├── main.rs          #   Gateway binary (health + models)
-│   │   ├── bin/spike.rs     #   Viability spike (Rust → Python → GPU)
-│   │   ├── gateway/         #   axum HTTP: api, catalog, router (stubs)
-│   │   ├── identity/        #   NodeId (real), rest pending
-│   │   ├── model/           #   ModelId, ModelEntity (real)
-│   │   ├── swarm/           #   Stubs (consensus, DAG, speculative)
-│   │   ├── economic/        #   Stubs (reputation, pricing, stake)
-│   │   ├── transport/       #   Stubs (WebRTC, signalling)
-│   │   └── dht/             #   Stubs (Kademlia, registry)
-│   └── proto/               #   spike.proto + synapse.proto
-├── synapse-runtime/         # Python — worker with 3 backends
-│   └── synapse_runtime/
-│       └── worker.py        #   vLLM / Ollama / Mock engines
-├── contracts/stake/         # Solidity — StakeManager (prototype)
-├── config/
-│   ├── models.toml          #   Model catalog (aspirational)
-│   └── default.toml         #   Node defaults
-├── docs/superpowers/
-│   └── spikes/              #   Thesis validation evidence
-├── features/                #   BDD specs (behavioral contracts)
-└── scripts/
-    └── run_spike.sh         #   Spike runner
+│   │   ├── main.rs          #   Binary entrypoint (axum server)
+│   │   ├── gateway/         #   axum HTTP: api, jobs, catalog, router
+│   │   ├── job/             #   Job domain: JobId, JobStatus, Job, JobStore
+│   │   │   └── infrastructure/  # InMemoryJobStore
+│   │   ├── scheduler/       #   Scheduler: Task, TaskStatus, WorkerPort
+│   │   │   └── infrastructure/  # InMemoryTaskStore, MockWorkerPort
+│   │   ├── identity/        #   NodeId, KeyPair, Node
+│   │   ├── model/           #   ModelId, ExpertId, Catalog
+│   │   ├── native_moe/      #   Native MoE runtime (forward pass validated)
+│   │   ├── swarm/           #   Consensus, Speculative engine, DAG engine
+│   │   ├── economic/        #   Reputation, Pricing, Stake management
+│   │   ├── transport/       #   WebRTC, Signalling
+│   │   ├── runtime/         #   InferencePort trait + Unix socket bridge
+│   │   ├── shared/          #   DomainError, DomainEvent
+│   │   └── dht/             #   Kademlia, Expert registry
+│   └── proto/               #   Protobuf schemas
+├── synapse-runtime/         # Python — vLLM adapter (subprocess)
+├── contracts/stake/         # Solidity — StakeManager
+├── config/                  # models.toml, default.toml
+├── docs/
+│   ├── adr/                 #   Architecture decision records
+│   ├── superpowers/         #   Design specs + spike docs
+│   └── next-session-context.md
+└── features/                #   Gherkin BDD specs
 ```
 
 ---
@@ -211,4 +201,4 @@ Apache 2.0. See [LICENSE](LICENSE).
 
 ---
 
-*Synapse is validating a thesis. The README will update as evidence accumulates. Last updated: 2026-07-29 after [vLLM viability spike](docs/superpowers/spikes/2026-07-28-vllm-viability-spike.md).*
+*Last updated: 2026-07-31. V0-1 (Job Model) and V0-2 (Scheduler) complete. Next: V0-3 (Multi-Worker + Crash Recovery).*
