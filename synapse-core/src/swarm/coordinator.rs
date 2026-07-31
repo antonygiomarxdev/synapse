@@ -45,11 +45,7 @@ impl GateInpLayer {
                 actual: data.len() as u64,
             });
         }
-        Ok(Self {
-            weights: data.to_vec(),
-            n_experts,
-            d_model,
-        })
+        Ok(Self { weights: data.to_vec(), n_experts, d_model })
     }
 
     /// Compute expert scores: hidden_state @ gate_inp.T
@@ -74,11 +70,7 @@ impl GateInpLayer {
         let mut indexed: Vec<(usize, f32)> =
             scores.iter().enumerate().map(|(i, &s)| (i, s)).collect();
         indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        indexed
-            .into_iter()
-            .take(k.min(self.n_experts))
-            .map(|(i, _)| i as u32)
-            .collect()
+        indexed.into_iter().take(k.min(self.n_experts)).map(|(i, _)| i as u32).collect()
     }
 }
 
@@ -129,18 +121,15 @@ impl ExpertRouter for RoundRobinRouter {
                 gate_weights.push(scores[eid as usize]);
             }
             assignments.push(WorkerAssignment {
-                node_id: NodeId::from_hex(
-                    &format!("000000000000000000000000000000000000000000000000000000000000000{w}")
-                )
+                node_id: NodeId::from_hex(&format!(
+                    "000000000000000000000000000000000000000000000000000000000000000{w}"
+                ))
                 .unwrap(),
                 expert_ids: local_ids,
             });
         }
 
-        Ok(ExpertRoute {
-            assignments,
-            gate_weights,
-        })
+        Ok(ExpertRoute { assignments, gate_weights })
     }
 }
 
@@ -175,10 +164,7 @@ mod tests {
     fn round_robin_routes_experts() {
         let data: Vec<f32> = (0..(4 * 8)).map(|x| x as f32 * 0.1).collect();
         let gate = GateInpLayer::from_slice(&data, 4, 8).unwrap();
-        let router = RoundRobinRouter {
-            layers: vec![gate],
-            worker_count: 2,
-        };
+        let router = RoundRobinRouter { layers: vec![gate], worker_count: 2 };
 
         let hidden: Vec<f32> = (0..8).map(|_| 0.5).collect();
         use crate::model::ModelId;

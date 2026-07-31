@@ -21,6 +21,7 @@ use std::path::Path;
 /// GGML quantization / data types (subset relevant to MoE models).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
+#[allow(clippy::enum_variant_names)]
 pub enum GgmlType {
     F32 = 0,
     F16 = 1,
@@ -47,11 +48,25 @@ pub enum GgmlType {
 impl GgmlType {
     pub fn from_u32(v: u32) -> Self {
         match v {
-            0 => GgmlType::F32, 1 => GgmlType::F16, 2 => GgmlType::Q4_0, 3 => GgmlType::Q4_1,
-            6 => GgmlType::Q5_0, 7 => GgmlType::Q5_1, 8 => GgmlType::Q8_0, 9 => GgmlType::Q8_1,
-            10 => GgmlType::Q2_K, 11 => GgmlType::Q3_K, 12 => GgmlType::Q4_K, 13 => GgmlType::Q5_K,
-            14 => GgmlType::Q6_K, 15 => GgmlType::Q8_K, 16 => GgmlType::I8, 17 => GgmlType::I16,
-            18 => GgmlType::I32, 19 => GgmlType::I64, 20 => GgmlType::F64,
+            0 => GgmlType::F32,
+            1 => GgmlType::F16,
+            2 => GgmlType::Q4_0,
+            3 => GgmlType::Q4_1,
+            6 => GgmlType::Q5_0,
+            7 => GgmlType::Q5_1,
+            8 => GgmlType::Q8_0,
+            9 => GgmlType::Q8_1,
+            10 => GgmlType::Q2_K,
+            11 => GgmlType::Q3_K,
+            12 => GgmlType::Q4_K,
+            13 => GgmlType::Q5_K,
+            14 => GgmlType::Q6_K,
+            15 => GgmlType::Q8_K,
+            16 => GgmlType::I8,
+            17 => GgmlType::I16,
+            18 => GgmlType::I32,
+            19 => GgmlType::I64,
+            20 => GgmlType::F64,
             _ => GgmlType::Unknown(v),
         }
     }
@@ -59,8 +74,13 @@ impl GgmlType {
     /// Size of one element in bytes (0 for quantized types that need custom decoding).
     pub fn element_size(self) -> usize {
         match self {
-            GgmlType::F32 => 4, GgmlType::F64 => 8, GgmlType::F16 => 2,
-            GgmlType::I8 => 1, GgmlType::I16 => 2, GgmlType::I32 => 4, GgmlType::I64 => 8,
+            GgmlType::F32 => 4,
+            GgmlType::F64 => 8,
+            GgmlType::F16 => 2,
+            GgmlType::I8 => 1,
+            GgmlType::I16 => 2,
+            GgmlType::I32 => 4,
+            GgmlType::I64 => 8,
             _ => 0, // quantized — use block_size()
         }
     }
@@ -153,8 +173,10 @@ impl GgufFile {
         }
         let version = read_u32(&mut f)?;
         if version != 3 {
-            return Err(io::Error::new(io::ErrorKind::InvalidData,
-                format!("unsupported GGUF version: {version}")));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unsupported GGUF version: {version}"),
+            ));
         }
         let n_tensors = read_u64(&mut f)?;
         let n_kv = read_u64(&mut f)?;
@@ -168,7 +190,8 @@ impl GgufFile {
         // Compute data offset (next 32-byte aligned position)
         let pos = f.stream_position()?;
         let align = 32;
-        let data_file_offset = if pos % align == 0 { pos } else { (pos + align - 1) / align * align };
+        let data_file_offset =
+            if pos % align == 0 { pos } else { (pos + align - 1) / align * align };
 
         Ok(GgufFile {
             metadata,
@@ -215,8 +238,13 @@ impl GgufFile {
                 }
             }
             _ => {
-                return Err(io::Error::new(io::ErrorKind::Unsupported,
-                    format!("tensor type {:?} not supported for direct f32 read — use dequantize", info.ggml_type)));
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!(
+                        "tensor type {:?} not supported for direct f32 read — use dequantize",
+                        info.ggml_type
+                    ),
+                ));
             }
         }
 
@@ -325,8 +353,12 @@ fn read_value<R: Read>(r: &mut R, val_type: u32) -> io::Result<GgufValue> {
         10 => GgufValue::Uint64(read_u64(r)?),
         11 => GgufValue::Int64(read_u64(r)? as i64),
         12 => GgufValue::Float64(read_f64(r)?),
-        other => return Err(io::Error::new(io::ErrorKind::InvalidData,
-            format!("unsupported KV value type: {other}"))),
+        other => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unsupported KV value type: {other}"),
+            ));
+        }
     })
 }
 
@@ -347,7 +379,15 @@ fn read_tensor_infos<R: Read>(r: &mut R, n: u64) -> io::Result<Vec<TensorInfo>> 
             n_elems * ggml_type.element_size() as u64
         } else if ggml_type.block_size() > 0 {
             let n_elems = shape_product(&shape);
-            let block_elements = if matches!(ggml_type, GgmlType::Q4_0 | GgmlType::Q4_1 | GgmlType::Q5_0 | GgmlType::Q5_1 | GgmlType::Q8_0 | GgmlType::Q8_1) {
+            let block_elements = if matches!(
+                ggml_type,
+                GgmlType::Q4_0
+                    | GgmlType::Q4_1
+                    | GgmlType::Q5_0
+                    | GgmlType::Q5_1
+                    | GgmlType::Q8_0
+                    | GgmlType::Q8_1
+            ) {
                 32u64
             } else {
                 256u64
@@ -358,14 +398,7 @@ fn read_tensor_infos<R: Read>(r: &mut R, n: u64) -> io::Result<Vec<TensorInfo>> 
             0
         };
 
-        tensors.push(TensorInfo {
-            name,
-            n_dims,
-            shape,
-            ggml_type,
-            offset,
-            size_bytes,
-        });
+        tensors.push(TensorInfo { name, n_dims, shape, ggml_type, offset, size_bytes });
     }
     Ok(tensors)
 }
@@ -415,7 +448,7 @@ mod tests {
 
     fn model_path() -> Option<PathBuf> {
         let p = PathBuf::from(
-            "/home/ksante/.ollama/models/blobs/sha256-4cbc52994d8ce56d58f3ecadcd451a5dbb2a4f1142098c6b9f030d18ee5e052b"
+            "/home/ksante/.ollama/models/blobs/sha256-4cbc52994d8ce56d58f3ecadcd451a5dbb2a4f1142098c6b9f030d18ee5e052b",
         );
         if p.exists() { Some(p) } else { None }
     }
@@ -440,8 +473,7 @@ mod tests {
         let path = model_path().expect("Granite MoE GGUF not found");
         let gguf = GgufFile::open(&path).unwrap();
 
-        let t = gguf.find_tensor("blk.0.ffn_gate_inp.weight")
-            .expect("gate_inp tensor not found");
+        let t = gguf.find_tensor("blk.0.ffn_gate_inp.weight").expect("gate_inp tensor not found");
         assert_eq!(t.n_dims, 2);
         assert_eq!(t.shape, vec![1536, 40]);
         assert!(matches!(t.ggml_type, GgmlType::F32));

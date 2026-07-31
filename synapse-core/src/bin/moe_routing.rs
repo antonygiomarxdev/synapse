@@ -11,8 +11,8 @@
 use std::env;
 use std::fs;
 
-use synapse_core::swarm::coordinator::{GateInpLayer, RoundRobinRouter, ExpertRouter};
 use synapse_core::model::ModelId;
+use synapse_core::swarm::coordinator::{ExpertRouter, GateInpLayer, RoundRobinRouter};
 use synapse_core::swarm::ports::{InferenceRequest, Priority};
 
 fn main() {
@@ -37,7 +37,14 @@ fn main() {
     // Parse flat f32 data
     let float_count = (data.len() - 12) / 4;
     let floats: Vec<f32> = (0..float_count)
-        .map(|i| f32::from_le_bytes([data[12 + i*4], data[12 + i*4 + 1], data[12 + i*4 + 2], data[12 + i*4 + 3]]))
+        .map(|i| {
+            f32::from_le_bytes([
+                data[12 + i * 4],
+                data[12 + i * 4 + 1],
+                data[12 + i * 4 + 2],
+                data[12 + i * 4 + 3],
+            ])
+        })
         .collect();
 
     let per_layer = n_experts * d_model;
@@ -50,10 +57,7 @@ fn main() {
     println!("  Loaded {} gate_inp layers", layers.len());
 
     // ── Simulate routing ──────────────────────────────────
-    let router = RoundRobinRouter {
-        layers: layers.clone(),
-        worker_count: 2,
-    };
+    let router = RoundRobinRouter { layers: layers.clone(), worker_count: 2 };
 
     let model = ModelId::new("granite-moe").unwrap();
     let req = InferenceRequest::new(
@@ -79,7 +83,10 @@ fn main() {
                     route.gate_weights.iter().sum::<f32>() / route.gate_weights.len() as f32
                 );
                 for (w, a) in route.assignments.iter().enumerate() {
-                    println!("  Worker {w}: experts {:?}", &a.expert_ids[..3.min(a.expert_ids.len())]);
+                    println!(
+                        "  Worker {w}: experts {:?}",
+                        &a.expert_ids[..3.min(a.expert_ids.len())]
+                    );
                 }
             }
             Err(e) => eprintln!("Token {t}: routing error: {e}"),
@@ -88,15 +95,17 @@ fn main() {
 
     // ── Verify: direct broadcast vs coordinated routing ──
     println!("\n=== Verification: coordinator vs direct broadcast ===");
-    
+
     let hidden_test: Vec<f32> = (0..d_model).map(|_| rand::random::<f32>()).collect();
-    
+
     // Direct: compute expert scores locally (all experts in one place)
     let layer0 = &layers[0];
     let scores = layer0.score_experts(&hidden_test);
     let topk_direct = {
         let mut idx: Vec<usize> = (0..n_experts).collect();
-        idx.sort_by(|&a, &b| scores[b].partial_cmp(&scores[a]).unwrap_or(std::cmp::Ordering::Equal));
+        idx.sort_by(|&a, &b| {
+            scores[b].partial_cmp(&scores[a]).unwrap_or(std::cmp::Ordering::Equal)
+        });
         idx.into_iter().take(8).collect::<Vec<_>>()
     };
 
@@ -114,7 +123,7 @@ fn main() {
 
     let direct_set: std::collections::HashSet<usize> = topk_direct.iter().copied().collect();
     let coord_set: std::collections::HashSet<u32> = topk_coord.iter().copied().collect();
-    
+
     let match_count = direct_set.iter().filter(|&&e| coord_set.contains(&(e as u32))).count();
     let total = topk_direct.len();
 

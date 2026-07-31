@@ -20,22 +20,19 @@ pub struct NativeMoeRuntime {
 impl NativeMoeRuntime {
     /// Create a runtime that loads models from the given GGUF file.
     pub fn new(model_path: PathBuf) -> Self {
-        NativeMoeRuntime {
-            model: None,
-            model_path: Some(model_path),
-        }
+        NativeMoeRuntime { model: None, model_path: Some(model_path) }
     }
 }
 
 impl InferencePort for NativeMoeRuntime {
     fn load(&mut self, _model: &ModelId, _experts: &[ExpertId]) -> Result<(), DomainError> {
-        let path = self.model_path.as_ref().ok_or_else(|| {
-            DomainError::ModelNotFound { model_id: "no path configured".into() }
-        })?;
+        let path = self
+            .model_path
+            .as_ref()
+            .ok_or_else(|| DomainError::ModelNotFound { model_id: "no path configured".into() })?;
 
-        let loaded = MoeModel::load_routing(path).map_err(|e| {
-            DomainError::StorageError { message: e }
-        })?;
+        let loaded =
+            MoeModel::load_routing(path).map_err(|e| DomainError::StorageError { message: e })?;
 
         self.model = Some(loaded);
         Ok(())
@@ -45,9 +42,10 @@ impl InferencePort for NativeMoeRuntime {
         &mut self,
         request: &crate::swarm::ports::InferenceRequest,
     ) -> Result<crate::swarm::ports::InferenceOutput, DomainError> {
-        let model = self.model.as_ref().ok_or_else(|| {
-            DomainError::ModelNotFound { model_id: "model not loaded".into() }
-        })?;
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| DomainError::ModelNotFound { model_id: "model not loaded".into() })?;
 
         let prompt: Vec<u32> = if request.prompt_tokens.is_empty() {
             vec![0, 1, 2, 3] // V0: dummy tokens (no tokenizer yet)
@@ -67,16 +65,12 @@ impl InferencePort for NativeMoeRuntime {
             })
             .collect();
 
-        let tokens = vec![crate::swarm::token::Token::new(
-            &routing_summary.join(" "),
-            0.0,
-        )
-        .map_err(|e| DomainError::InvalidTokenText { reason: e.to_string() })?];
+        let tokens = vec![
+            crate::swarm::token::Token::new(&routing_summary.join(" "), 0.0)
+                .map_err(|e| DomainError::InvalidTokenText { reason: e.to_string() })?,
+        ];
 
-        Ok(crate::swarm::ports::InferenceOutput {
-            request_id: request.id,
-            tokens,
-        })
+        Ok(crate::swarm::ports::InferenceOutput { request_id: request.id, tokens })
     }
 
     fn verify(&mut self, _model: &ModelId, _expected_hash: &str) -> Result<bool, DomainError> {
@@ -99,7 +93,7 @@ mod tests {
 
     fn model_path() -> PathBuf {
         PathBuf::from(
-            "/home/ksante/.ollama/models/blobs/sha256-4cbc52994d8ce56d58f3ecadcd451a5dbb2a4f1142098c6b9f030d18ee5e052b"
+            "/home/ksante/.ollama/models/blobs/sha256-4cbc52994d8ce56d58f3ecadcd451a5dbb2a4f1142098c6b9f030d18ee5e052b",
         )
     }
 

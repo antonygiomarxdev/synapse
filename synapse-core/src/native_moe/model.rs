@@ -31,6 +31,11 @@ pub struct MoeConfig {
     pub max_seq_len: u32,
     pub norm_eps: f32,
     pub rope_theta: f32,
+    // Granite MoE specific scaling factors
+    pub embedding_scale: f32,
+    pub residual_scale: f32,
+    pub logit_scale: f32,
+    pub attention_scale: f32,
 }
 
 /// A loaded tensor (f32 buffer with shape metadata).
@@ -42,9 +47,15 @@ pub struct Tensor {
 }
 
 impl Tensor {
-    pub fn len(&self) -> usize { self.data.len() }
-    pub fn is_empty(&self) -> bool { self.data.is_empty() }
-    pub fn as_slice(&self) -> &[f32] { &self.data }
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+    pub fn as_slice(&self) -> &[f32] {
+        &self.data
+    }
 }
 
 /// Trait for providing expert/attention weights to the forward loop.
@@ -104,8 +115,10 @@ impl MoeModel {
     pub fn load_routing(path: &Path) -> Result<Self, String> {
         let gguf = GgufFile::open(path).map_err(|e| format!("GGUF parse: {e}"))?;
 
-        let arch = gguf.get_string("general.architecture")
-            .ok_or("missing general.architecture")?.to_string();
+        let arch = gguf
+            .get_string("general.architecture")
+            .ok_or("missing general.architecture")?
+            .to_string();
 
         if arch != "granitemoe" {
             return Err(format!("unsupported architecture: {arch} (only granitemoe for V0)"));
@@ -115,28 +128,37 @@ impl MoeModel {
             let a = &arch;
             MoeConfig {
                 architecture: arch.clone(),
-                d_model: gguf.get_u32(&format!("{a}.embedding_length"))
+                d_model: gguf
+                    .get_u32(&format!("{a}.embedding_length"))
                     .ok_or("missing embedding_length")?,
-                d_ff: gguf.get_u32(&format!("{a}.feed_forward_length"))
+                d_ff: gguf
+                    .get_u32(&format!("{a}.feed_forward_length"))
                     .ok_or("missing feed_forward_length")?,
-                n_layers: gguf.get_u32(&format!("{a}.block_count"))
-                    .ok_or("missing block_count")?,
-                n_heads: gguf.get_u32(&format!("{a}.attention.head_count"))
+                n_layers: gguf.get_u32(&format!("{a}.block_count")).ok_or("missing block_count")?,
+                n_heads: gguf
+                    .get_u32(&format!("{a}.attention.head_count"))
                     .ok_or("missing head_count")?,
-                n_kv_heads: gguf.get_u32(&format!("{a}.attention.head_count_kv"))
-                    .unwrap_or(8),
-                n_experts: gguf.get_u32(&format!("{a}.expert_count"))
+                n_kv_heads: gguf.get_u32(&format!("{a}.attention.head_count_kv")).unwrap_or(8),
+                n_experts: gguf
+                    .get_u32(&format!("{a}.expert_count"))
                     .ok_or("missing expert_count")?,
-                n_experts_active: gguf.get_u32(&format!("{a}.expert_used_count"))
+                n_experts_active: gguf
+                    .get_u32(&format!("{a}.expert_used_count"))
                     .ok_or("missing expert_used_count")?,
-                vocab_size: gguf.get_u32(&format!("{a}.vocab_size"))
-                    .ok_or("missing vocab_size")?,
-                max_seq_len: gguf.get_u32(&format!("{a}.context_length"))
+                vocab_size: gguf.get_u32(&format!("{a}.vocab_size")).ok_or("missing vocab_size")?,
+                max_seq_len: gguf
+                    .get_u32(&format!("{a}.context_length"))
                     .ok_or("missing context_length")?,
-                norm_eps: gguf.get_f32(&format!("{a}.attention.layer_norm_rms_epsilon"))
+                norm_eps: gguf
+                    .get_f32(&format!("{a}.attention.layer_norm_rms_epsilon"))
                     .ok_or("missing norm_eps")?,
-                rope_theta: gguf.get_f32(&format!("{a}.rope.freq_base"))
+                rope_theta: gguf
+                    .get_f32(&format!("{a}.rope.freq_base"))
                     .ok_or("missing rope_theta")?,
+                embedding_scale: gguf.get_f32(&format!("{a}.embedding_scale")).unwrap_or(1.0),
+                residual_scale: gguf.get_f32(&format!("{a}.residual_scale")).unwrap_or(1.0),
+                logit_scale: gguf.get_f32(&format!("{a}.logit_scale")).unwrap_or(1.0),
+                attention_scale: gguf.get_f32(&format!("{a}.attention_scale")).unwrap_or(1.0),
             }
         };
 
@@ -145,7 +167,9 @@ impl MoeModel {
             let info = gguf.find_tensor(name)?;
             let abs = gguf.data_file_offset() + info.offset;
             dequantize_tensor(path, abs, info.ggml_type, &info.shape).ok().map(|data| Tensor {
-                name: name.to_string(), data, shape: info.shape.clone(),
+                name: name.to_string(),
+                data,
+                shape: info.shape.clone(),
             })
         };
 
@@ -161,8 +185,8 @@ impl MoeModel {
                 try_f32(&name)
             };
 
-            let gate_inp = try_load("ffn_gate_inp")
-                .ok_or(format!("layer {idx}: gate_inp missing"))?;
+            let gate_inp =
+                try_load("ffn_gate_inp").ok_or(format!("layer {idx}: gate_inp missing"))?;
 
             layers.push(MoeLayer {
                 index: idx,
@@ -181,6 +205,38 @@ impl MoeModel {
 
         Ok(MoeModel { config, token_embd, output_norm, output, layers })
     }
+
+    /// Load ALL weights (routing + attention + expert FFN) from GGUF.
+    /// Uses more memory but enables full forward pass.
+    pub fn load_all(path: &Path) -> Result<Self, String> {
+        let mut model = Self::load_routing(path)?;
+
+        let gguf = GgufFile::open(path).map_err(|e| format!("GGUF parse: {e}"))?;
+        let try_f32 = |name: &str| -> Option<Tensor> {
+            let info = gguf.find_tensor(name)?;
+            let abs = gguf.data_file_offset() + info.offset;
+            dequantize_tensor(path, abs, info.ggml_type, &info.shape).ok().map(|data| Tensor {
+                name: name.to_string(),
+                data,
+                shape: info.shape.clone(),
+            })
+        };
+
+        for idx in 0..model.config.n_layers as usize {
+            let try_load =
+                |suffix: &str| -> Option<Tensor> { try_f32(&format!("blk.{idx}.{suffix}.weight")) };
+
+            model.layers[idx].attn_q = try_load("attn_q");
+            model.layers[idx].attn_k = try_load("attn_k");
+            model.layers[idx].attn_v = try_load("attn_v");
+            model.layers[idx].attn_output = try_load("attn_output");
+            model.layers[idx].gate_exps = try_load("ffn_gate_exps");
+            model.layers[idx].up_exps = try_load("ffn_up_exps");
+            model.layers[idx].down_exps = try_load("ffn_down_exps");
+        }
+
+        Ok(model)
+    }
 }
 
 #[cfg(test)]
@@ -190,7 +246,7 @@ mod tests {
 
     fn model_path() -> PathBuf {
         PathBuf::from(
-            "/home/ksante/.ollama/models/blobs/sha256-4cbc52994d8ce56d58f3ecadcd451a5dbb2a4f1142098c6b9f030d18ee5e052b"
+            "/home/ksante/.ollama/models/blobs/sha256-4cbc52994d8ce56d58f3ecadcd451a5dbb2a4f1142098c6b9f030d18ee5e052b",
         )
     }
 
