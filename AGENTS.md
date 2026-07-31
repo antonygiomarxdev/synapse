@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-Synapse is a **decentralized P2P inference protocol for Mixture-of-Experts (MoE) models**. It coordinates consumer GPUs into a distributed inference swarm — miners contribute idle hardware, clients consume frontier AI through an OpenAI-compatible API. No datacenter, no gatekeeper, no rate limits.
+Synapse is **distributed inference infrastructure for Mixture-of-Experts (MoE) models**. It distributes experts across consumer hardware so large MoE models can run without datacenter GPUs.
 
-**Multi-language monorepo:** Rust core (P2P + gateway), Python vLLM runtime (subprocess), Solidity staking contracts (L2).
+**Multi-language monorepo:** Rust core (network + gateway), Python vLLM runtime (subprocess), Solidity staking contracts (L2).
 
 ## Architecture & Data Flow
 
@@ -34,9 +34,9 @@ These apply to every line of code. No exceptions.
 - **TDD: Red-Green-Refactor** — Write the failing test first, confirm it fails, then implement, then refactor. Tests inline with source at `#[cfg(test)] mod tests`.
 - **Clean Code: Every public item gets `///` doc comments.** Test names describe the scenario. No dead code. `thiserror` for errors, never manual `Display`/`Error`. Conventional Commits.
 
-### Two Swarm Modes
-- **Speculative Swarm (realtime):** N nodes run full model independently, majority vote per token. Latency = single-node latency.
-- **Swarm DAG (batch):** True expert distribution. Nodes hold 2-5 experts each. Requests flow through expert graph.
+### Two Network Modes
+- **Speculative Network (realtime):** N nodes run full model independently, majority vote per token. Latency = single-node latency.
+- **Network DAG (batch):** True expert distribution. Nodes hold 2-5 experts each. Requests flow through expert graph.
 
 ## Key Directories
 
