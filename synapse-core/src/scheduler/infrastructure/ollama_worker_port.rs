@@ -15,13 +15,12 @@ pub struct WorkerConfig {
     pub base_url: String,
 }
 
-/// Real worker port that dispatches tasks to Ollama via HTTP.
+/// Real worker port that dispatches tasks to Ollama via async HTTP.
 ///
 /// Maps `WorkerId` to an Ollama model and sends inference requests
-/// to `POST /api/generate`. Uses blocking reqwest for simplicity
-/// in synchronous scheduler contexts.
+/// to `POST /api/generate`.
 pub struct OllamaWorkerPort {
-    client: reqwest::blocking::Client,
+    client: reqwest::Client,
     workers: HashMap<WorkerId, WorkerConfig>,
 }
 
@@ -45,7 +44,7 @@ impl OllamaWorkerPort {
         let workers: HashMap<WorkerId, WorkerConfig> =
             configs.into_iter().map(|c| (c.id.clone(), c)).collect();
         Self {
-            client: reqwest::blocking::Client::builder()
+            client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(120))
                 .build()
                 .expect("failed to build HTTP client"),
@@ -54,8 +53,9 @@ impl OllamaWorkerPort {
     }
 }
 
+#[async_trait::async_trait]
 impl WorkerPort for OllamaWorkerPort {
-    fn dispatch(
+    async fn dispatch(
         &self,
         worker_id: &WorkerId,
         task: &Task,
@@ -79,10 +79,12 @@ impl WorkerPort for OllamaWorkerPort {
             .post(&url)
             .json(&body)
             .send()
+            .await
             .map_err(|e| DomainError::WorkerDispatchFailed {
                 reason: format!("HTTP request failed: {e}"),
             })?
             .json::<OllamaResponse>()
+            .await
             .map_err(|e| DomainError::WorkerDispatchFailed {
                 reason: format!("failed to parse response: {e}"),
             })?;
@@ -90,7 +92,7 @@ impl WorkerPort for OllamaWorkerPort {
         Ok(response.response)
     }
 
-    fn health_check(
+    async fn health_check(
         &self,
         worker_id: &WorkerId,
     ) -> Result<bool, DomainError> {
@@ -102,7 +104,7 @@ impl WorkerPort for OllamaWorkerPort {
             })?;
 
         let url = format!("{}/api/tags", config.base_url);
-        match self.client.get(&url).send() {
+        match self.client.get(&url).send().await {
             Ok(resp) => Ok(resp.status().is_success()),
             Err(_) => Ok(false),
         }
@@ -128,8 +130,8 @@ mod tests {
         )
     }
 
-    #[test]
-    fn health_check_localhost() {
+    #[tokio::test]
+    async fn health_check_localhost() {
         let port = OllamaWorkerPort::new(vec![WorkerConfig {
             id: WorkerId::new("w-0"),
             model: "granite3.1-moe:3b".into(),
@@ -137,15 +139,15 @@ mod tests {
         }]);
 
         let healthy =
-            port.health_check(&WorkerId::new("w-0")).unwrap();
+            port.health_check(&WorkerId::new("w-0")).await.unwrap();
         assert!(healthy);
     }
 
-    #[test]
-    fn health_check_unknown_worker() {
+    #[tokio::test]
+    async fn health_check_unknown_worker() {
         let port = OllamaWorkerPort::new(vec![]);
         let result =
-            port.health_check(&WorkerId::new("unknown"));
+            port.health_check(&WorkerId::new("unknown")).await;
         assert!(matches!(
             result,
             Err(DomainError::WorkerDispatchFailed { .. })

@@ -15,13 +15,15 @@ pub trait TaskStore: Send + Sync {
 /// Port for dispatching tasks to inference workers.
 ///
 /// Infrastructure adapters implement this with real workers (vLLM, Ollama)
-/// or mock workers for testing.
+/// or mock workers for testing. All methods are async to allow concurrent
+/// dispatch across multiple workers.
+#[async_trait::async_trait]
 pub trait WorkerPort: Send + Sync {
     /// Dispatches a task to a worker and returns the generated text.
-    fn dispatch(&self, worker_id: &WorkerId, task: &Task) -> Result<String, DomainError>;
+    async fn dispatch(&self, worker_id: &WorkerId, task: &Task) -> Result<String, DomainError>;
 
     /// Checks if the given worker is healthy and reachable.
-    fn health_check(&self, worker_id: &WorkerId) -> Result<bool, DomainError>;
+    async fn health_check(&self, worker_id: &WorkerId) -> Result<bool, DomainError>;
 }
 
 #[cfg(test)]

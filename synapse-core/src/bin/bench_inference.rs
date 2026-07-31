@@ -34,7 +34,7 @@ fn worker(id: &str) -> WorkerInfo {
     }
 }
 
-fn run_scenario(
+async fn run_scenario(
     name: &str,
     mock: Arc<MockWorkerPort>,
     workers: Vec<WorkerInfo>,
@@ -96,7 +96,7 @@ fn run_scenario(
             }
         }
 
-        let _ = scheduler.tick(now);
+        let _ = scheduler.tick(now).await;
 
         let all_terminal = job_ids.iter().all(|id| {
             job_store
@@ -130,7 +130,8 @@ fn run_scenario(
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     eprintln!("=== V0 Benchmark ===\n");
 
     // Scenario 1: Single worker
@@ -143,7 +144,7 @@ fn main() {
         JOBS,
         None,
         0,
-    );
+    ).await;
 
     // Scenario 2: Multi worker (2 workers)
     eprintln!("[2/3] Multi worker (2 workers)...");
@@ -155,7 +156,7 @@ fn main() {
         JOBS,
         None,
         0,
-    );
+    ).await;
 
     // Scenario 3: Crash recovery (worker-0 fails mid-job)
     eprintln!("[3/3] Crash recovery (worker-0 fails after half)...");
@@ -167,7 +168,7 @@ fn main() {
         JOBS,
         Some(WorkerId::new("w-0")),
         JOBS / 2,
-    );
+    ).await;
 
     // Generate report
     let date = Utc::now().format("%Y-%m-%d").to_string();

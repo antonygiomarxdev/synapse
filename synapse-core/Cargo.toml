@@ -15,6 +15,7 @@ sha2 = "0.10"
 # DHT
 libp2p = { version = "0.56", features = ["kad", "noise", "yamux", "tcp", "quic", "macros"] }
 tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
 
 # Gateway (HTTP)
 axum = "0.8"
@@ -40,7 +41,7 @@ bytemuck = "1"
 alloy = { version = "2", features = ["full"] }
 
 # HTTP client (OllamaWorkerPort)
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
 mutants = "0.0.4"
