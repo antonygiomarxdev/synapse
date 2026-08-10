@@ -268,3 +268,51 @@ mod tests {
         assert_eq!(job, parsed);
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    fn is_valid_transition(from: JobStatus, to: JobStatus) -> bool {
+        matches!(
+            (from, to),
+            (JobStatus::Pending, JobStatus::Processing)
+                | (JobStatus::Processing, JobStatus::Completed)
+                | (JobStatus::Processing, JobStatus::Failed)
+        )
+    }
+
+    proptest! {
+        #[test]
+        fn valid_transitions_succeed(
+            from in prop_oneof![Just(JobStatus::Pending), Just(JobStatus::Processing)],
+            to in prop_oneof![Just(JobStatus::Processing), Just(JobStatus::Completed), Just(JobStatus::Failed)]
+        ) {
+            if is_valid_transition(from, to) {
+                let mut job = Job { id: JobId::new(), status: from };
+                prop_assert!(job.transition(to).is_ok());
+            }
+        }
+
+        #[test]
+        fn invalid_transitions_return_error(
+            from in prop_oneof![Just(JobStatus::Pending), Just(JobStatus::Processing), Just(JobStatus::Completed), Just(JobStatus::Failed)],
+            to in prop_oneof![Just(JobStatus::Pending), Just(JobStatus::Processing), Just(JobStatus::Completed), Just(JobStatus::Failed)]
+        ) {
+            if !is_valid_transition(from, to) {
+                let mut job = Job { id: JobId::new(), status: from };
+                prop_assert!(job.transition(to).is_err());
+            }
+        }
+
+        #[test]
+        fn terminal_states_never_transition_again(
+            status in prop_oneof![Just(JobStatus::Completed), Just(JobStatus::Failed)],
+            next in prop_oneof![Just(JobStatus::Pending), Just(JobStatus::Processing), Just(JobStatus::Completed), Just(JobStatus::Failed)]
+        ) {
+            let mut job = Job { id: JobId::new(), status };
+            prop_assert!(job.transition(next).is_err());
+        }
+    }
+}
