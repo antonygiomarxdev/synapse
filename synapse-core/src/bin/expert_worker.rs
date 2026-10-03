@@ -3,23 +3,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
-use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 
 use synapse_core::native_moe::expert_shard::ExpertShard;
-
-#[derive(Deserialize)]
-struct FfnRequest {
-    layer: usize,
-    hidden: Vec<f32>,
-    expert_ids: Vec<u32>,
-    expert_scores: Vec<f32>,
-}
-
-#[derive(Serialize)]
-struct FfnResponse {
-    output: Vec<f32>,
-}
+use synapse_core::native_moe::expert_worker_client::{FfnRequest, FfnResponse};
 
 struct WorkerState {
     /// Layer index → expert shard for that layer
@@ -34,8 +21,8 @@ async fn handle_ffn(
         Some(s) => s,
         None => return Err(StatusCode::NOT_FOUND),
     };
-    let output = shard.expert_ffn(&req.hidden, &req.expert_ids, &req.expert_scores);
-    Ok(Json(FfnResponse { output }))
+    let outputs = shard.ffn_batch(&req.rows);
+    Ok(Json(FfnResponse { outputs }))
 }
 
 async fn handle_health() -> &'static str {

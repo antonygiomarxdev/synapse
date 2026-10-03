@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::Duration;
 
-use synapse_core::native_moe::expert_worker_client::ExpertWorkerClient;
+use synapse_core::native_moe::expert_worker_client::{ExpertWorkerClient, FfnRow};
 use synapse_core::native_moe::forward;
 use synapse_core::native_moe::model::MoeModel;
 
@@ -133,18 +133,22 @@ async fn main() {
         let ids: Vec<u32> = experts.iter().map(|(id, _)| *id).collect();
         let scores: Vec<f32> = experts.iter().map(|(_, s)| *s).collect();
 
-        match client
-            .compute_ffn(0, attn_out.ffn_normed[0].clone(), ids.clone(), scores.clone())
-            .await
-        {
-            Ok(output) => {
-                eprintln!(
-                    "  Worker {wid}: experts={:?}, output norm={:.4}",
-                    ids,
-                    output.iter().map(|x| x * x).sum::<f32>().sqrt()
-                );
-                for d in 0..d_model {
-                    remote_ffn[d] += output[d];
+        let row = FfnRow {
+            hidden: attn_out.ffn_normed[0].clone(),
+            expert_ids: ids.clone(),
+            expert_scores: scores.clone(),
+        };
+        match client.compute_ffn_batch(0, vec![row]).await {
+            Ok(mut outputs) => {
+                if let Some(output) = outputs.pop() {
+                    eprintln!(
+                        "  Worker {wid}: experts={:?}, output norm={:.4}",
+                        ids,
+                        output.iter().map(|x| x * x).sum::<f32>().sqrt()
+                    );
+                    for d in 0..d_model {
+                        remote_ffn[d] += output[d];
+                    }
                 }
             }
             Err(e) => eprintln!("  Worker {wid} failed: {e}"),

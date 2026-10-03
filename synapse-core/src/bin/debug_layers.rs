@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::Duration;
 
-use synapse_core::native_moe::expert_worker_client::ExpertWorkerClient;
+use synapse_core::native_moe::expert_worker_client::{ExpertWorkerClient, FfnRow};
 use synapse_core::native_moe::forward;
 use synapse_core::native_moe::model::MoeModel;
 
@@ -150,11 +150,17 @@ async fn main() {
             let client = if *wid == 0 { &client1 } else { &client2 };
             let ids: Vec<u32> = experts.iter().map(|(id, _)| *id).collect();
             let scores: Vec<f32> = experts.iter().map(|(_, s)| *s).collect();
-            match client.compute_ffn(layer_idx, dist_attn.ffn_normed[0].clone(), ids, scores).await
-            {
-                Ok(output) => {
-                    for d in 0..d_model {
-                        remote_ffn[d] += output[d];
+            let row = FfnRow {
+                hidden: dist_attn.ffn_normed[0].clone(),
+                expert_ids: ids,
+                expert_scores: scores,
+            };
+            match client.compute_ffn_batch(layer_idx, vec![row]).await {
+                Ok(mut outputs) => {
+                    if let Some(output) = outputs.pop() {
+                        for d in 0..d_model {
+                            remote_ffn[d] += output[d];
+                        }
                     }
                 }
                 Err(e) => eprintln!("  Worker {wid} failed: {e}"),

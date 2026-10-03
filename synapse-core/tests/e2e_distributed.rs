@@ -344,9 +344,13 @@ async fn ffn_endpoint_processes_request() {
         .post("http://localhost:18001/ffn")
         .json(&serde_json::json!({
             "layer": 0,
-            "hidden": vec![0.0f32; 1536],
-            "expert_ids": [0],
-            "expert_scores": [1.0]
+            "rows": [
+                {
+                    "hidden": vec![0.0f32; 1536],
+                    "expert_ids": [0],
+                    "expert_scores": [1.0]
+                }
+            ]
         }))
         .send()
         .await
@@ -355,10 +359,15 @@ async fn ffn_endpoint_processes_request() {
     assert_eq!(resp.status(), 200);
 
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert!(body["output"].is_array(), "Response should contain output array");
+    assert!(body["outputs"].is_array(), "Response should contain outputs array");
 
-    let output = body["output"].as_array().unwrap();
-    assert_eq!(output.len(), 512, "Output should have d_ff=512 elements");
+    let outputs = body["outputs"].as_array().unwrap();
+    assert_eq!(outputs.len(), 1, "Should have 1 output for 1 input row");
+    assert_eq!(
+        outputs[0].as_array().unwrap().len(),
+        1536,
+        "Output should have d_model=1536 elements"
+    );
 
     cleanup_workers(&mut workers);
 }

@@ -155,7 +155,12 @@ impl DistributedModel {
                 let scores: Vec<f32> = experts.iter().map(|(_, s)| *s).collect();
 
                 join_set.spawn(async move {
-                    let result = client.compute_ffn(layer_idx, hidden_vec, ids, scores).await;
+                    use crate::native_moe::expert_worker_client::FfnRow;
+                    let row = FfnRow { hidden: hidden_vec, expert_ids: ids, expert_scores: scores };
+                    let result = client
+                        .compute_ffn_batch(layer_idx, vec![row])
+                        .await
+                        .map(|mut outs| outs.pop().unwrap_or_default());
                     (t, result)
                 });
             }
