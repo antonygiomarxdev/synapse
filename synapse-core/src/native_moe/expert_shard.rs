@@ -100,6 +100,13 @@ impl ExpertShard {
     /// IMPORTANT: scores must be pre-normalized by the caller.
     /// This function does NOT normalize scores — it trusts the caller
     /// to provide already-normalized weights (sum ≈ 1.0).
+    /// Run expert FFN for each row; returns one output per row, same order.
+    pub fn ffn_batch(&self, rows: &[super::expert_worker_client::FfnRow]) -> Vec<Vec<f32>> {
+        rows.iter()
+            .map(|row| self.expert_ffn(&row.hidden, &row.expert_ids, &row.expert_scores))
+            .collect()
+    }
+
     pub fn expert_ffn(
         &self,
         hidden: &[f32],
@@ -240,5 +247,51 @@ mod tests {
         let out = shard.expert_ffn(&hidden, &[5], &[1.0]);
         // Should return zeros since expert 5 is not loaded
         assert!(out.iter().all(|&v| v.abs() < 1e-6));
+    }
+
+    #[test]
+    fn ffn_batch_three_rows_same_order() {
+        use super::super::expert_worker_client::FfnRow;
+
+        // Build a minimal ExpertShard by hand: d_model=4, d_ff=2, one expert
+        let d_model = 4;
+        let d_ff = 2;
+        let mut experts = std::collections::HashMap::new();
+
+        // Expert 0: simple nonzero weights
+        let gate = vec![1.0f32; d_model * d_ff]; // 4*2 = 8 elements
+        let up = vec![2.0f32; d_model * d_ff];
+        let down = vec![0.5f32; d_ff * d_model]; // 2*4 = 8 elements
+        experts.insert(0, ExpertWeights { gate, up, down });
+
+        let shard = ExpertShard { experts, indices: vec![0], d_model, d_ff };
+
+        // Create 3 rows
+        let row1 =
+            FfnRow { hidden: vec![1.0f32; d_model], expert_ids: vec![0], expert_scores: vec![1.0] };
+        let row2 =
+            FfnRow { hidden: vec![2.0f32; d_model], expert_ids: vec![0], expert_scores: vec![1.0] };
+        let row3 =
+            FfnRow { hidden: vec![0.5f32; d_model], expert_ids: vec![0], expert_scores: vec![1.0] };
+
+        let rows = vec![row1.clone(), row2.clone(), row3.clone()];
+        let outputs = shard.ffn_batch(&rows);
+
+        // Assert: 3 rows in → 3 outputs, same order
+        assert_eq!(outputs.len(), 3);
+        for out in &outputs {
+            assert_eq!(out.len(), d_model);
+        }
+
+        // Each row with expert_ids=[0] should match expert_ffn directly
+        let out1_direct = shard.expert_ffn(&row1.hidden, &row1.expert_ids, &row1.expert_scores);
+        let out2_direct = shard.expert_ffn(&row2.hidden, &row2.expert_ids, &row2.expert_scores);
+        let out3_direct = shard.expert_ffn(&row3.hidden, &row3.expert_ids, &row3.expert_scores);
+
+        for d in 0..d_model {
+            assert!((outputs[0][d] - out1_direct[d]).abs() < 1e-6);
+            assert!((outputs[1][d] - out2_direct[d]).abs() < 1e-6);
+            assert!((outputs[2][d] - out3_direct[d]).abs() < 1e-6);
+        }
     }
 }
