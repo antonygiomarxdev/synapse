@@ -19,3 +19,13 @@
 Distributed expert inference produces **identical logits** to monolithic execution.
 This validates Synapse's core thesis: MoE experts can be distributed across
 multiple workers without any loss in inference quality.
+
+## Limitations
+
+- **Single token only**: Benchmark measured one-token generation; multi-token with KV cache is untested.
+- **Localhost only**: All workers ran on the same machine; network latency not measured.
+- **No network validation**: Speedup estimates are local dispatch only.
+
+## Validation Note: Single-Shard Ablation
+
+The validation suite `docs/validation-distributed-vs-full.json` shows each "worker_*" output from generation with **only half the experts**. This is a single-shard ablation: a model missing half its experts degrades, so garbage output is expected. It is not a failure of distributed inference, which combines all shards (see results above).
