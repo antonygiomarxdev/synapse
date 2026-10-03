@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+
 /// Distributed forward pass: coordinator runs attention locally,
 /// dispatches expert FFN to remote workers.
 ///
@@ -8,10 +10,9 @@ use std::collections::HashMap;
 
 use super::expert_worker_client::ExpertWorkerClient;
 use super::forward::{
-    combine_ffn_residual, compute_logits, forward_layer_attention,
-    ForwardOutput,
+    ForwardOutput, combine_ffn_residual, compute_logits, forward_layer_attention,
 };
-use super::model::{MoeConfig, MoeModel};
+use super::model::MoeModel;
 
 /// Configuration for a remote expert worker.
 #[derive(Debug, Clone)]
@@ -35,10 +36,8 @@ impl DistributedModel {
     /// Create a distributed model from a coordinator model (with routing
     /// weights but no expert FFN weights) and a list of worker configs.
     pub fn new(model: MoeModel, worker_configs: &[WorkerConfig]) -> Self {
-        let workers: Vec<ExpertWorkerClient> = worker_configs
-            .iter()
-            .map(|c| ExpertWorkerClient::new(c.url.clone()))
-            .collect();
+        let workers: Vec<ExpertWorkerClient> =
+            worker_configs.iter().map(|c| ExpertWorkerClient::new(c.url.clone())).collect();
 
         let mut expert_map = HashMap::new();
         for (wid, config) in worker_configs.iter().enumerate() {
@@ -47,11 +46,7 @@ impl DistributedModel {
             }
         }
 
-        DistributedModel {
-            model,
-            workers,
-            expert_map,
-        }
+        DistributedModel { model, workers, expert_map }
     }
 
     /// Run distributed forward pass on prompt tokens.
@@ -61,42 +56,34 @@ impl DistributedModel {
     /// 2. Route experts via gate_inp
     /// 3. Dispatch expert FFN to remote workers (concurrent)
     /// 4. Combine results and continue
-    pub async fn forward(
-        &self,
-        prompt_tokens: &[u32],
-    ) -> ForwardOutput {
+    pub async fn forward(&self, prompt_tokens: &[u32]) -> ForwardOutput {
         let d_model = self.model.config.d_model as usize;
         let d_ff = self.model.config.d_ff as usize;
         let residual_scale = self.model.config.residual_scale;
 
         // Phase 0: Embedding lookup (local)
-        let mut hidden: Vec<Vec<f32>> =
-            if let Some(ref embd) = self.model.token_embd {
-                let d = embd.shape[0] as usize;
-                let shape_vocab = embd.shape[1] as usize;
-                prompt_tokens
-                    .iter()
-                    .map(|&tid| {
-                        let t = tid as usize % shape_vocab;
-                        (0..d)
-                            .map(|dim| {
-                                self.model.config.embedding_scale
-                                    * embd.data[t * d + dim]
-                            })
-                            .collect()
-                    })
-                    .collect()
-            } else {
-                vec![vec![0.0f32; d_model]; prompt_tokens.len()]
-            };
+        let mut hidden: Vec<Vec<f32>> = if let Some(ref embd) = self.model.token_embd {
+            let d = embd.shape[0] as usize;
+            let shape_vocab = embd.shape[1] as usize;
+            prompt_tokens
+                .iter()
+                .map(|&tid| {
+                    let t = tid as usize % shape_vocab;
+                    (0..d)
+                        .map(|dim| self.model.config.embedding_scale * embd.data[t * d + dim])
+                        .collect()
+                })
+                .collect()
+        } else {
+            vec![vec![0.0f32; d_model]; prompt_tokens.len()]
+        };
 
         let mut routes = Vec::new();
 
         // Phase 1: Per-layer distributed forward
         for layer_idx in 0..self.model.layers.len() {
             // Step 1: Run attention + routing locally
-            let attn_out =
-                forward_layer_attention(&self.model, layer_idx, hidden);
+            let attn_out = forward_layer_attention(&self.model, layer_idx, hidden);
 
             routes.push(attn_out.route.clone());
 
@@ -124,11 +111,7 @@ impl DistributedModel {
                 });
 
             // Step 3: Combine FFN output with residual
-            hidden = combine_ffn_residual(
-                &attn_out.residual2,
-                &ffn_output,
-                residual_scale,
-            );
+            hidden = combine_ffn_residual(&attn_out.residual2, &ffn_output, residual_scale);
         }
 
         // Phase 2: Output projection (local)
@@ -155,34 +138,24 @@ impl DistributedModel {
 
         for t in 0..n_tokens {
             // Group experts by worker for this token
-            let mut worker_experts: HashMap<usize, Vec<(u32, f32)>> =
-                HashMap::new();
+            let mut worker_experts: HashMap<usize, Vec<(u32, f32)>> = HashMap::new();
 
             for (i, &eid) in expert_ids.iter().enumerate() {
                 let wid = self
                     .expert_map
                     .get(&(eid as usize))
-                    .ok_or(format!(
-                        "expert {eid} not mapped to any worker"
-                    ))?;
-                worker_experts
-                    .entry(*wid)
-                    .or_default()
-                    .push((eid, expert_scores[i]));
+                    .ok_or(format!("expert {eid} not mapped to any worker"))?;
+                worker_experts.entry(*wid).or_default().push((eid, expert_scores[i]));
             }
 
             for (wid, experts) in worker_experts {
                 let client = self.workers[wid].clone();
                 let hidden_vec = hidden[t].clone();
-                let ids: Vec<u32> =
-                    experts.iter().map(|(id, _)| *id).collect();
-                let scores: Vec<f32> =
-                    experts.iter().map(|(_, s)| *s).collect();
+                let ids: Vec<u32> = experts.iter().map(|(id, _)| *id).collect();
+                let scores: Vec<f32> = experts.iter().map(|(_, s)| *s).collect();
 
                 join_set.spawn(async move {
-                    let result = client
-                        .compute_ffn(layer_idx, hidden_vec, ids, scores)
-                        .await;
+                    let result = client.compute_ffn(layer_idx, hidden_vec, ids, scores).await;
                     (t, result)
                 });
             }
@@ -211,15 +184,14 @@ impl DistributedModel {
 }
 
 /// Load a coordinator model (attention + routing only, no expert weights).
-pub fn load_coordinator(
-    path: &std::path::Path,
-) -> Result<MoeModel, String> {
+pub fn load_coordinator(path: &std::path::Path) -> Result<MoeModel, String> {
     MoeModel::load_routing(path)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::native_moe::model::MoeConfig;
 
     #[test]
     fn expert_map_construction() {

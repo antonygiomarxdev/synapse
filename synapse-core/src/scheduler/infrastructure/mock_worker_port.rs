@@ -16,10 +16,7 @@ pub struct MockWorkerPort {
 
 impl MockWorkerPort {
     pub fn new() -> Self {
-        Self {
-            responses: Mutex::new(Vec::new()),
-            failures: Mutex::new(Vec::new()),
-        }
+        Self { responses: Mutex::new(Vec::new()), failures: Mutex::new(Vec::new()) }
     }
 
     /// Makes the given worker fail on dispatch.
@@ -41,11 +38,7 @@ impl Default for MockWorkerPort {
 
 #[async_trait::async_trait]
 impl WorkerPort for MockWorkerPort {
-    async fn dispatch(
-        &self,
-        worker_id: &WorkerId,
-        task: &Task,
-    ) -> Result<String, DomainError> {
+    async fn dispatch(&self, worker_id: &WorkerId, task: &Task) -> Result<String, DomainError> {
         let failures = self.failures.lock().unwrap();
         if failures.iter().any(|w| w == worker_id) {
             return Err(DomainError::WorkerDispatchFailed {
@@ -59,10 +52,7 @@ impl WorkerPort for MockWorkerPort {
         Ok(format!("mock response for task {}", task.id))
     }
 
-    async fn health_check(
-        &self,
-        worker_id: &WorkerId,
-    ) -> Result<bool, DomainError> {
+    async fn health_check(&self, worker_id: &WorkerId) -> Result<bool, DomainError> {
         let failures = self.failures.lock().unwrap();
         Ok(!failures.iter().any(|w| w == worker_id))
     }
@@ -79,10 +69,7 @@ mod tests {
         Task::new(
             JobId::new(),
             "model".into(),
-            Message {
-                role: "user".into(),
-                content: "hi".into(),
-            },
+            Message { role: "user".into(), content: "hi".into() },
             Utc::now(),
         )
     }
@@ -91,8 +78,7 @@ mod tests {
     async fn dispatch_succeeds_by_default() {
         let port = MockWorkerPort::new();
         let task = test_task();
-        let result =
-            port.dispatch(&WorkerId::new("w-0"), &task).await;
+        let result = port.dispatch(&WorkerId::new("w-0"), &task).await;
         assert!(result.is_ok());
     }
 
@@ -101,21 +87,15 @@ mod tests {
         let port = MockWorkerPort::new();
         port.set_failing(WorkerId::new("w-0"));
         let task = test_task();
-        let result =
-            port.dispatch(&WorkerId::new("w-0"), &task).await;
-        assert!(matches!(
-            result,
-            Err(DomainError::WorkerDispatchFailed { .. })
-        ));
+        let result = port.dispatch(&WorkerId::new("w-0"), &task).await;
+        assert!(matches!(result, Err(DomainError::WorkerDispatchFailed { .. })));
     }
 
     #[tokio::test]
     async fn dispatch_log_records_calls() {
         let port = MockWorkerPort::new();
         let task = test_task();
-        port.dispatch(&WorkerId::new("w-0"), &task)
-            .await
-            .unwrap();
+        port.dispatch(&WorkerId::new("w-0"), &task).await.unwrap();
         let log = port.dispatch_log();
         assert_eq!(log.len(), 1);
         assert_eq!(log[0].0, WorkerId::new("w-0"));

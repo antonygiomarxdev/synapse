@@ -1,6 +1,5 @@
 use super::job::{Job, JobResult};
 use super::job_id::JobId;
-use super::job_status::JobStatus;
 use crate::shared::DomainError;
 
 /// Port for persisting and retrieving jobs.
@@ -31,6 +30,7 @@ pub trait JobStore: Send + Sync {
 mod tests {
     use super::*;
     use crate::job::job::{Message, Priority};
+    use crate::job::job_status::JobStatus;
 
     /// In-memory implementation to validate the trait contract.
     struct InMemoryStore {
@@ -68,7 +68,11 @@ mod tests {
             }
         }
 
-        fn complete(&self, id: &JobId, result: crate::job::job::JobResult) -> Result<(), DomainError> {
+        fn complete(
+            &self,
+            id: &JobId,
+            result: crate::job::job::JobResult,
+        ) -> Result<(), DomainError> {
             let mut jobs = self.jobs.lock().unwrap();
             match jobs.get_mut(id) {
                 Some(job) => job.complete(result),

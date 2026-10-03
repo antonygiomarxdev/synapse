@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 /// Benchmark: monolithic vs distributed inference with real expert workers.
 ///
 /// Tests scalability by running the same prompt through:
@@ -8,9 +10,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
-use synapse_core::native_moe::distributed_forward::{
-    DistributedModel, WorkerConfig,
-};
+use synapse_core::native_moe::distributed_forward::{DistributedModel, WorkerConfig};
 use synapse_core::native_moe::expert_worker_client::ExpertWorkerClient;
 use synapse_core::native_moe::forward;
 use synapse_core::native_moe::model::MoeModel;
@@ -25,7 +25,16 @@ fn start_worker(port: u16, experts: &[usize]) -> Child {
     let path = model_path();
     let expert_strs: Vec<String> = experts.iter().map(|e| e.to_string()).collect();
     Command::new("cargo")
-        .args(["run", "--release", "--bin", "expert_worker", "--", path.to_str().unwrap(), "--port", &port.to_string()])
+        .args([
+            "run",
+            "--release",
+            "--bin",
+            "expert_worker",
+            "--",
+            path.to_str().unwrap(),
+            "--port",
+            &port.to_string(),
+        ])
         .args(&expert_strs)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -53,8 +62,7 @@ fn cosine(a: &[f32], b: &[f32]) -> f32 {
 }
 
 fn top_n(logits: &[f32], n: usize) -> Vec<usize> {
-    let mut idx: Vec<(usize, f32)> =
-        logits.iter().enumerate().map(|(i, &v)| (i, v)).collect();
+    let mut idx: Vec<(usize, f32)> = logits.iter().enumerate().map(|(i, &v)| (i, v)).collect();
     idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
     idx.iter().take(n).map(|(i, _)| *i).collect()
 }
@@ -109,10 +117,8 @@ async fn main() {
     ];
 
     // Run distributed benchmarks
-    let scenarios: Vec<(&str, Vec<(&str, u16, Vec<usize>)>)> = vec![
-        ("2 workers", configs_2),
-        ("4 workers", configs_4),
-    ];
+    let scenarios: Vec<(&str, Vec<(&str, u16, Vec<usize>)>)> =
+        vec![("2 workers", configs_2), ("4 workers", configs_4)];
 
     let mut results = Vec::new();
     results.push(BenchResult {
@@ -208,11 +214,7 @@ async fn main() {
 
     let mono_ms = results[0].wall_ms;
     for r in &results {
-        let speedup = if r.wall_ms > 0 {
-            mono_ms as f64 / r.wall_ms as f64
-        } else {
-            0.0
-        };
+        let speedup = if r.wall_ms > 0 { mono_ms as f64 / r.wall_ms as f64 } else { 0.0 };
         let top5_match = top_n(&r.logits, 5) == mono_top5;
         eprintln!(
             "| {} | {} | {:.2}x | {:.6} | {} |",
@@ -233,11 +235,7 @@ async fn main() {
     report.push_str("|--------|-----------|---------|------------|------------|\n");
 
     for r in &results {
-        let speedup = if r.wall_ms > 0 {
-            mono_ms as f64 / r.wall_ms as f64
-        } else {
-            0.0
-        };
+        let speedup = if r.wall_ms > 0 { mono_ms as f64 / r.wall_ms as f64 } else { 0.0 };
         let top5_match = top_n(&r.logits, 5) == mono_top5;
         report.push_str(&format!(
             "| {} | {} | {:.2}x | {:.6} | {} |\n",
@@ -246,8 +244,11 @@ async fn main() {
     }
 
     report.push_str("\n## Key Finding\n\n");
-    report.push_str("Distributed expert inference produces **identical logits** to monolithic execution.\n");
-    report.push_str("This validates Synapse's core thesis: MoE experts can be distributed across\n");
+    report.push_str(
+        "Distributed expert inference produces **identical logits** to monolithic execution.\n",
+    );
+    report
+        .push_str("This validates Synapse's core thesis: MoE experts can be distributed across\n");
     report.push_str("multiple workers without any loss in inference quality.\n");
 
     let report_path = format!("docs/benchmarks/distributed-{date}.md");

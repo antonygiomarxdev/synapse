@@ -39,12 +39,7 @@ impl ExpertWorkerClient {
     /// Check if the worker is healthy.
     pub async fn health_check(&self) -> bool {
         let url = format!("{}/health", self.base_url);
-        self.client
-            .get(&url)
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false)
+        self.client.get(&url).send().await.map(|r| r.status().is_success()).unwrap_or(false)
     }
 
     /// Send hidden state + routing to worker, get FFN output back.
@@ -56,12 +51,7 @@ impl ExpertWorkerClient {
         expert_scores: Vec<f32>,
     ) -> Result<Vec<f32>, DomainError> {
         let url = format!("{}/ffn", self.base_url);
-        let req = FfnRequest {
-            layer,
-            hidden,
-            expert_ids,
-            expert_scores,
-        };
+        let req = FfnRequest { layer, hidden, expert_ids, expert_scores };
 
         let resp = self
             .client

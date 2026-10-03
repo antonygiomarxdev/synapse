@@ -30,8 +30,8 @@ pub fn dequantize_tensor(
             Ok(raw.iter().map(|&h| f16_to_f32(h)).collect())
         }
         GgmlType::Q8_0 => dequant_q8_0_raw(&mut f, n_elems),
-        GgmlType::Q4_K => dequant_q4_k_raw(&mut f, n_elems),
-        GgmlType::Q6_K => dequant_q6_k_raw(&mut f, n_elems),
+        GgmlType::Q4K => dequant_q4_k_raw(&mut f, n_elems),
+        GgmlType::Q6K => dequant_q6_k_raw(&mut f, n_elems),
         other => Err(io::Error::new(
             io::ErrorKind::Unsupported,
             format!("dequantize not implemented for {other:?}"),
@@ -59,8 +59,7 @@ pub fn dequantize_expert(
 
     match ggml_type {
         GgmlType::F32 => {
-            let byte_offset =
-                tensor_file_offset + (expert_index * expert_elems * 4) as u64;
+            let byte_offset = tensor_file_offset + (expert_index * expert_elems * 4) as u64;
             f.seek(SeekFrom::Start(byte_offset))?;
             let mut out = vec![0.0f32; expert_elems];
             let bytes = bytemuck::cast_slice_mut(&mut out);
@@ -68,8 +67,7 @@ pub fn dequantize_expert(
             Ok(out)
         }
         GgmlType::F16 => {
-            let byte_offset =
-                tensor_file_offset + (expert_index * expert_elems * 2) as u64;
+            let byte_offset = tensor_file_offset + (expert_index * expert_elems * 2) as u64;
             f.seek(SeekFrom::Start(byte_offset))?;
             let mut raw = vec![0u16; expert_elems];
             let bytes = bytemuck::cast_slice_mut(&mut raw);
@@ -88,14 +86,13 @@ pub fn dequantize_expert(
             }
             let blocks_per_expert = expert_elems / elems_per_block;
             let expert_byte_offset = blocks_per_expert * block_bytes;
-            let seek_pos = tensor_file_offset
-                + (expert_index * expert_byte_offset) as u64;
+            let seek_pos = tensor_file_offset + (expert_index * expert_byte_offset) as u64;
             f.seek(SeekFrom::Start(seek_pos))?;
 
             match quant_type {
                 GgmlType::Q8_0 => dequant_q8_0_raw(&mut f, expert_elems),
-                GgmlType::Q4_K => dequant_q4_k_raw(&mut f, expert_elems),
-                GgmlType::Q6_K => dequant_q6_k_raw(&mut f, expert_elems),
+                GgmlType::Q4K => dequant_q4_k_raw(&mut f, expert_elems),
+                GgmlType::Q6K => dequant_q6_k_raw(&mut f, expert_elems),
                 other => Err(io::Error::new(
                     io::ErrorKind::Unsupported,
                     format!("expert dequant not implemented for {other:?}"),
@@ -107,6 +104,7 @@ pub fn dequantize_expert(
 
 /// Reorder data from column-major (GGUF storage) to row-major (our usage).
 /// GGUF stores tensors column-major: data[col * rows + row]
+#[expect(dead_code)]
 /// We want row-major: data[row * cols + col]
 fn reorder_column_major(raw: &[f32], shape: &[u64]) -> io::Result<Vec<f32>> {
     if shape.len() < 2 {
@@ -244,9 +242,8 @@ fn dequant_q6_k_raw<R: Read>(r: &mut R, n_elems: usize) -> io::Result<Vec<f32>> 
             let mut q3_arr = [0i32; 32];
             let mut q4_arr = [0i32; 32];
             for l in 0..32usize {
-                q1_arr[l] = ((ql[ql_off + l] & 0xF) as i32
-                    | (((qh[qh_off + l] >> 0) & 3) as i32) << 4)
-                    - 32;
+                q1_arr[l] =
+                    ((ql[ql_off + l] & 0xF) as i32 | (((qh[qh_off + l] & 3) as i32) << 4)) - 32;
                 q2_arr[l] = ((ql[ql_off + l + 32] & 0xF) as i32
                     | (((qh[qh_off + l] >> 2) & 3) as i32) << 4)
                     - 32;
@@ -257,21 +254,21 @@ fn dequant_q6_k_raw<R: Read>(r: &mut R, n_elems: usize) -> io::Result<Vec<f32>> 
                     - 32;
             }
             // Output in ggml order: all q1, then all q2, then all q3, then all q4
-            for l in 0..32usize {
+            for (l, &q) in q1_arr.iter().enumerate() {
                 let is = l / 16;
-                out.push(d * sc[sc_off + is + 0] as f32 * q1_arr[l] as f32);
+                out.push(d * sc[sc_off + is] as f32 * q as f32);
             }
-            for l in 0..32usize {
+            for (l, &q) in q2_arr.iter().enumerate() {
                 let is = l / 16;
-                out.push(d * sc[sc_off + is + 2] as f32 * q2_arr[l] as f32);
+                out.push(d * sc[sc_off + is + 2] as f32 * q as f32);
             }
-            for l in 0..32usize {
+            for (l, &q) in q3_arr.iter().enumerate() {
                 let is = l / 16;
-                out.push(d * sc[sc_off + is + 4] as f32 * q3_arr[l] as f32);
+                out.push(d * sc[sc_off + is + 4] as f32 * q as f32);
             }
-            for l in 0..32usize {
+            for (l, &q) in q4_arr.iter().enumerate() {
                 let is = l / 16;
-                out.push(d * sc[sc_off + is + 6] as f32 * q4_arr[l] as f32);
+                out.push(d * sc[sc_off + is + 6] as f32 * q as f32);
             }
         }
     }
@@ -343,7 +340,7 @@ mod tests {
         let n_elems: usize = info.shape.iter().map(|&x| x as usize).product();
         let n_blocks = n_elems / 256;
 
-        let mut f = std::fs::File::open(&model_path()).unwrap();
+        let mut f = std::fs::File::open(model_path()).unwrap();
         f.seek(SeekFrom::Start(abs_offset)).unwrap();
 
         let mut nan_count = 0usize;

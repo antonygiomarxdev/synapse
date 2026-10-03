@@ -13,7 +13,7 @@
 /// and any weight provider can plug in without modifying the forward loop.
 use std::path::Path;
 
-use crate::native_moe::gguf::{GgufFile, TensorInfo};
+use crate::native_moe::gguf::GgufFile;
 use crate::native_moe::quant::dequantize_tensor;
 
 /// Model configuration extracted from GGUF metadata.

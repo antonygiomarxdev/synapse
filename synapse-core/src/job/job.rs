@@ -22,16 +22,12 @@ pub struct JobResult {
 /// Priority level for job scheduling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum Priority {
     Low,
+    #[default]
     Normal,
     High,
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 impl std::fmt::Display for Priority {
@@ -80,7 +76,11 @@ impl Job {
     /// # Errors
     ///
     /// Returns [`DomainError::InvalidJob`] if model is empty or messages is empty.
-    pub fn submit(model: String, messages: Vec<Message>, priority: Priority) -> Result<Self, DomainError> {
+    pub fn submit(
+        model: String,
+        messages: Vec<Message>,
+        priority: Priority,
+    ) -> Result<Self, DomainError> {
         if model.is_empty() {
             return Err(DomainError::InvalidJob { reason: "model must not be empty".into() });
         }

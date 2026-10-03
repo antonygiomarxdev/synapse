@@ -31,12 +31,12 @@ pub enum GgmlType {
     Q5_1 = 7,
     Q8_0 = 8,
     Q8_1 = 9,
-    Q2_K = 10,
-    Q3_K = 11,
-    Q4_K = 12,
-    Q5_K = 13,
-    Q6_K = 14,
-    Q8_K = 15,
+    Q2K = 10,
+    Q3K = 11,
+    Q4K = 12,
+    Q5K = 13,
+    Q6K = 14,
+    Q8K = 15,
     I8 = 16,
     I16 = 17,
     I32 = 18,
@@ -56,12 +56,12 @@ impl GgmlType {
             7 => GgmlType::Q5_1,
             8 => GgmlType::Q8_0,
             9 => GgmlType::Q8_1,
-            10 => GgmlType::Q2_K,
-            11 => GgmlType::Q3_K,
-            12 => GgmlType::Q4_K,
-            13 => GgmlType::Q5_K,
-            14 => GgmlType::Q6_K,
-            15 => GgmlType::Q8_K,
+            10 => GgmlType::Q2K,
+            11 => GgmlType::Q3K,
+            12 => GgmlType::Q4K,
+            13 => GgmlType::Q5K,
+            14 => GgmlType::Q6K,
+            15 => GgmlType::Q8K,
             16 => GgmlType::I8,
             17 => GgmlType::I16,
             18 => GgmlType::I32,
@@ -89,16 +89,16 @@ impl GgmlType {
     /// Q4_K uses 256 elements per block; see ggml quants.
     pub fn block_size(self) -> usize {
         match self {
-            GgmlType::Q4_0 => 20,  // 32 elements
-            GgmlType::Q4_1 => 20,  // 32 elements
-            GgmlType::Q5_0 => 22,  // 32 elements
-            GgmlType::Q5_1 => 22,  // 32 elements
-            GgmlType::Q8_0 => 34,  // 32 elements
-            GgmlType::Q8_1 => 34,  // 32 elements
-            GgmlType::Q4_K => 144, // 256 elements (Q4_K superblock)
-            GgmlType::Q5_K => 176, // 256 elements
-            GgmlType::Q6_K => 210, // 256 elements
-            GgmlType::Q8_K => 292, // 256 elements
+            GgmlType::Q4_0 => 20, // 32 elements
+            GgmlType::Q4_1 => 20, // 32 elements
+            GgmlType::Q5_0 => 22, // 32 elements
+            GgmlType::Q5_1 => 22, // 32 elements
+            GgmlType::Q8_0 => 34, // 32 elements
+            GgmlType::Q8_1 => 34, // 32 elements
+            GgmlType::Q4K => 144, // 256 elements (Q4_K superblock)
+            GgmlType::Q5K => 176, // 256 elements
+            GgmlType::Q6K => 210, // 256 elements
+            GgmlType::Q8K => 292, // 256 elements
             _ => 0,
         }
     }
@@ -113,10 +113,7 @@ impl GgmlType {
             GgmlType::Q4_0 | GgmlType::Q4_1 => 32,
             GgmlType::Q5_0 | GgmlType::Q5_1 => 32,
             GgmlType::Q8_0 | GgmlType::Q8_1 => 32,
-            GgmlType::Q4_K
-            | GgmlType::Q5_K
-            | GgmlType::Q6_K
-            | GgmlType::Q8_K => 256,
+            GgmlType::Q4K | GgmlType::Q5K | GgmlType::Q6K | GgmlType::Q8K => 256,
             _ => 0,
         }
     }
@@ -170,6 +167,7 @@ pub struct GgufFile {
     pub metadata: GgufMetadata,
     pub tensors: Vec<TensorInfo>,
     data_region: DataRegion,
+    #[expect(dead_code)]
     file_len: u64,
 }
 
@@ -204,8 +202,7 @@ impl GgufFile {
         // Compute data offset (next 32-byte aligned position)
         let pos = f.stream_position()?;
         let align = 32;
-        let data_file_offset =
-            if pos % align == 0 { pos } else { (pos + align - 1) / align * align };
+        let data_file_offset = pos.div_ceil(align) * align;
 
         Ok(GgufFile {
             metadata,
@@ -406,7 +403,7 @@ fn read_tensor_infos<R: Read>(r: &mut R, n: u64) -> io::Result<Vec<TensorInfo>> 
             } else {
                 256u64
             };
-            let n_blocks = (n_elems + block_elements - 1) / block_elements;
+            let n_blocks = n_elems.div_ceil(block_elements);
             n_blocks * ggml_type.block_size() as u64
         } else {
             0

@@ -49,7 +49,7 @@ pub trait InferencePort {
 mod tests {
     /// These tests are documentation of the trait contract.
     /// Actual behavior is tested in infrastructure adapter tests.
-
+    ///
     /// Trait is object-safe for dynamic dispatch in tests.
     #[allow(dead_code)]
     fn assert_object_safe(_port: &mut dyn super::InferencePort) {}

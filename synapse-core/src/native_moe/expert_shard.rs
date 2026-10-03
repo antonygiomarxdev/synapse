@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop)]
+
 /// Per-expert GGUF loader for distributed MoE inference.
 ///
 /// Loads only specified expert indices from a GGUF file without
@@ -7,7 +9,7 @@ use std::collections::HashMap;
 use std::io;
 use std::path::Path;
 
-use super::gguf::{GgufFile, GgmlType};
+use super::gguf::GgufFile;
 use super::quant::dequantize_expert;
 
 /// Weights for a single expert (gate, up, down projections).
@@ -55,28 +57,19 @@ impl ExpertShard {
         let gate_info = gguf
             .find_tensor(&gate_name)
             .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("tensor not found: {gate_name}"),
-                )
+                io::Error::new(io::ErrorKind::NotFound, format!("tensor not found: {gate_name}"))
             })?
             .clone();
         let up_info = gguf
             .find_tensor(&up_name)
             .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("tensor not found: {up_name}"),
-                )
+                io::Error::new(io::ErrorKind::NotFound, format!("tensor not found: {up_name}"))
             })?
             .clone();
         let down_info = gguf
             .find_tensor(&down_name)
             .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("tensor not found: {down_name}"),
-                )
+                io::Error::new(io::ErrorKind::NotFound, format!("tensor not found: {down_name}"))
             })?
             .clone();
 
@@ -87,40 +80,16 @@ impl ExpertShard {
         let mut experts = HashMap::new();
 
         for &eid in expert_indices {
-            let gate = dequantize_expert(
-                path,
-                gate_offset,
-                gate_info.ggml_type,
-                eid,
-                expert_elems,
-            )?;
-            let up = dequantize_expert(
-                path,
-                up_offset,
-                up_info.ggml_type,
-                eid,
-                expert_elems,
-            )?;
-            let down = dequantize_expert(
-                path,
-                down_offset,
-                down_info.ggml_type,
-                eid,
-                expert_elems,
-            )?;
+            let gate =
+                dequantize_expert(path, gate_offset, gate_info.ggml_type, eid, expert_elems)?;
+            let up = dequantize_expert(path, up_offset, up_info.ggml_type, eid, expert_elems)?;
+            let down =
+                dequantize_expert(path, down_offset, down_info.ggml_type, eid, expert_elems)?;
 
-            experts.insert(
-                eid,
-                ExpertWeights { gate, up, down },
-            );
+            experts.insert(eid, ExpertWeights { gate, up, down });
         }
 
-        Ok(ExpertShard {
-            experts,
-            indices: expert_indices.to_vec(),
-            d_model,
-            d_ff,
-        })
+        Ok(ExpertShard { experts, indices: expert_indices.to_vec(), d_model, d_ff })
     }
 
     /// Run expert FFN for the given expert IDs and scores.
@@ -157,8 +126,7 @@ impl ExpertShard {
             for j in 0..d_ff {
                 let mut acc = 0.0f32;
                 for d in 0..d_model {
-                    acc += hidden[d]
-                        * weights.gate[j * d_model + d];
+                    acc += hidden[d] * weights.gate[j * d_model + d];
                 }
                 gate_out[j] = acc;
             }
@@ -168,8 +136,7 @@ impl ExpertShard {
             for j in 0..d_ff {
                 let mut acc = 0.0f32;
                 for d in 0..d_model {
-                    acc += hidden[d]
-                        * weights.up[j * d_model + d];
+                    acc += hidden[d] * weights.up[j * d_model + d];
                 }
                 up_out[j] = acc;
             }
@@ -216,9 +183,7 @@ mod tests {
             eprintln!("skipping: model not found");
             return;
         }
-        let shard =
-            ExpertShard::load(&path, 0, &[0], 1536, 512)
-                .unwrap();
+        let shard = ExpertShard::load(&path, 0, &[0], 1536, 512).unwrap();
         assert_eq!(shard.experts.len(), 1);
         assert!(shard.experts.contains_key(&0));
         let w = &shard.experts[&0];
@@ -235,14 +200,7 @@ mod tests {
             eprintln!("skipping: model not found");
             return;
         }
-        let shard = ExpertShard::load(
-            &path,
-            0,
-            &[0, 5, 19, 39],
-            1536,
-            512,
-        )
-        .unwrap();
+        let shard = ExpertShard::load(&path, 0, &[0, 5, 19, 39], 1536, 512).unwrap();
         assert_eq!(shard.experts.len(), 4);
         for eid in [0, 5, 19, 39] {
             assert!(shard.experts.contains_key(&eid));
@@ -256,9 +214,7 @@ mod tests {
             eprintln!("skipping: model not found");
             return;
         }
-        let shard =
-            ExpertShard::load(&path, 0, &[0, 1], 1536, 512)
-                .unwrap();
+        let shard = ExpertShard::load(&path, 0, &[0, 1], 1536, 512).unwrap();
         let hidden = vec![1.0f32; 1536];
         let expert_ids = vec![0u32, 1u32];
         let expert_scores = vec![0.6f32, 0.4f32];
@@ -275,9 +231,7 @@ mod tests {
             return;
         }
         // Load only expert 0, but request expert 5
-        let shard =
-            ExpertShard::load(&path, 0, &[0], 1536, 512)
-                .unwrap();
+        let shard = ExpertShard::load(&path, 0, &[0], 1536, 512).unwrap();
         let hidden = vec![1.0f32; 1536];
         let out = shard.expert_ffn(&hidden, &[5], &[1.0]);
         // Should return zeros since expert 5 is not loaded

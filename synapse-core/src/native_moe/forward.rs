@@ -1,3 +1,5 @@
+#![allow(clippy::needless_range_loop, clippy::manual_memcpy, clippy::too_many_arguments)]
+
 /// MoE forward loop with real attention, expert FFN, and output projection.
 ///
 /// Full transformer forward pass: embedding → (RMS norm → GQA attention → residual
@@ -254,7 +256,6 @@ pub fn forward_debug(
     let logits = if let Some(ref embd) = model.token_embd {
         let d = embd.shape[0] as usize;
         let shape_vocab = embd.shape[1] as usize;
-        let actual_vocab = embd.data.len() / d;
         let mut logits = vec![0.0f32; shape_vocab];
         for v in 0..shape_vocab {
             let mut acc = 0.0f32;
@@ -442,8 +443,6 @@ pub fn expert_ffn(
     // Expert weights are stored as [n_experts, d_ff, d_model] in data
     // but tensor shape is [d_model, d_ff, n_experts]
     // To access tensor[d, j, e], use data[e * d_ff * d_model + j * d_model + d]
-    let n_experts_gate = gate_exps.shape[2] as usize;
-    let n_experts_down = down_exps.shape[2] as usize;
 
     // Debug: print first few values of gate_exps for expert 0
     eprintln!("  [FFN_WEIGHTS] gate_exps[0,0,0..5] = {:?}", &gate_exps.data[0..5]);
@@ -619,8 +618,7 @@ pub fn forward_layer_attention(
 
         for t in 0..n_tokens {
             for d in 0..d_model {
-                hidden[t][d] =
-                    residual[t][d] + model.config.residual_scale * attn_out[t][d];
+                hidden[t][d] = residual[t][d] + model.config.residual_scale * attn_out[t][d];
             }
         }
     } else {
@@ -640,12 +638,7 @@ pub fn forward_layer_attention(
     let route = route_experts(layer, &hidden);
 
     let ffn_normed = hidden.clone();
-    LayerAttentionOutput {
-        hidden,
-        ffn_normed,
-        residual2,
-        route,
-    }
+    LayerAttentionOutput { hidden, ffn_normed, residual2, route }
 }
 
 /// Combine FFN output with residual: residual2 + residual_scale * ffn_out
@@ -660,8 +653,7 @@ pub fn combine_ffn_residual(
 
     for t in 0..n_tokens {
         for d in 0..d_model {
-            output[t][d] =
-                residual2[t][d] + residual_scale * ffn_out[t][d];
+            output[t][d] = residual2[t][d] + residual_scale * ffn_out[t][d];
         }
     }
 
@@ -669,10 +661,7 @@ pub fn combine_ffn_residual(
 }
 
 /// Compute output logits from the final hidden state.
-pub fn compute_logits(
-    model: &MoeModel,
-    hidden: &[Vec<f32>],
-) -> Vec<f32> {
+pub fn compute_logits(model: &MoeModel, hidden: &[Vec<f32>]) -> Vec<f32> {
     let d_model = model.config.d_model as usize;
     let last_token_idx = hidden.len() - 1;
     let last_hidden = &hidden[last_token_idx];
@@ -782,7 +771,7 @@ mod tests {
         for (layer_idx, expert_ids, scores) in &output.routes {
             assert_eq!(expert_ids.len(), 8, "layer {layer_idx}: expected 8 experts");
             assert_eq!(scores.len(), 8);
-            assert!(expert_ids.iter().all(|&id| (id as u32) < model.config.n_experts));
+            assert!(expert_ids.iter().all(|&id| id < model.config.n_experts));
             assert!(scores.iter().all(|&s| s.is_finite()));
         }
     }
@@ -946,7 +935,7 @@ mod tests {
     #[test]
     fn trace_norms_by_layer() {
         let model = MoeModel::load_all(&model_path()).expect("load_all failed");
-        let tokens = vec![49u32]; // single token
+        let tokens = [49u32]; // single token
 
         // Run forward pass and capture hidden state norms after each layer
         let n_tokens = tokens.len();
@@ -1103,13 +1092,21 @@ mod tests {
         eprintln!("Cosine similarity: {:.4}", cos_sim);
 
         // Top-5 for each
-        let mut full_idx: Vec<(usize, f32)> = full.logits.iter().enumerate().map(|(i, &v)| (i, v)).collect();
+        let mut full_idx: Vec<(usize, f32)> =
+            full.logits.iter().enumerate().map(|(i, &v)| (i, v)).collect();
         full_idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        let mut no_ffn_idx: Vec<(usize, f32)> = no_ffn.logits.iter().enumerate().map(|(i, &v)| (i, v)).collect();
+        let mut no_ffn_idx: Vec<(usize, f32)> =
+            no_ffn.logits.iter().enumerate().map(|(i, &v)| (i, v)).collect();
         no_ffn_idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-        eprintln!("Full top-5:  {:?}", full_idx.iter().take(5).map(|(i, _)| *i).collect::<Vec<_>>());
-        eprintln!("NoFFN top-5: {:?}", no_ffn_idx.iter().take(5).map(|(i, _)| *i).collect::<Vec<_>>());
+        eprintln!(
+            "Full top-5:  {:?}",
+            full_idx.iter().take(5).map(|(i, _)| *i).collect::<Vec<_>>()
+        );
+        eprintln!(
+            "NoFFN top-5: {:?}",
+            no_ffn_idx.iter().take(5).map(|(i, _)| *i).collect::<Vec<_>>()
+        );
 
         // The expert FFN should significantly change the output
         assert!(cos_sim < 0.99, "FFN should change output significantly, cos_sim={cos_sim}");
@@ -1118,8 +1115,12 @@ mod tests {
         // Print expert routing for each layer
         eprintln!("\nExpert routing per layer:");
         for (layer_idx, expert_ids, scores) in &full.routes {
-            eprintln!("  L{:2}: experts={:?} scores={:.4?}",
-                layer_idx, &expert_ids[..3], &scores[..3]);
+            eprintln!(
+                "  L{:2}: experts={:?} scores={:.4?}",
+                layer_idx,
+                &expert_ids[..3],
+                &scores[..3]
+            );
         }
     }
 

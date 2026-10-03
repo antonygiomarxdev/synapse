@@ -44,12 +44,7 @@ pub struct Task {
 
 impl Task {
     /// Creates a new task in `Pending` status.
-    pub fn new(
-        job_id: JobId,
-        model: String,
-        message: Message,
-        now: DateTime<Utc>,
-    ) -> Self {
+    pub fn new(job_id: JobId, model: String, message: Message, now: DateTime<Utc>) -> Self {
         Self {
             id: TaskId::new(),
             job_id,

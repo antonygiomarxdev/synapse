@@ -16,8 +16,7 @@ fn model_path() -> PathBuf {
 
 fn start_worker(port: u16, experts: &[usize]) -> Child {
     let path = model_path();
-    let expert_strs: Vec<String> =
-        experts.iter().map(|e| e.to_string()).collect();
+    let expert_strs: Vec<String> = experts.iter().map(|e| e.to_string()).collect();
 
     Command::new("cargo")
         .args([
@@ -60,7 +59,7 @@ async fn main() {
     eprintln!("=== FFN Debug: Local vs Remote ===\n");
 
     let model = MoeModel::load_all(&mpath).unwrap();
-    let tokens = vec![49u32];
+    let tokens = [49u32];
     let d_model = model.config.d_model as usize;
 
     // Embedding
@@ -71,9 +70,7 @@ async fn main() {
             .iter()
             .map(|&tid| {
                 let t = tid as usize % shape_vocab;
-                (0..d)
-                    .map(|dim| model.config.embedding_scale * embd.data[t * d + dim])
-                    .collect()
+                (0..d).map(|dim| model.config.embedding_scale * embd.data[t * d + dim]).collect()
             })
             .collect()
     } else {
@@ -110,9 +107,10 @@ async fn main() {
 
     // Start workers
     eprintln!("\nStarting workers...");
-    let mut workers = Vec::new();
-    workers.push(start_worker(8001, &(0..20).collect::<Vec<_>>()));
-    workers.push(start_worker(8002, &(20..40).collect::<Vec<_>>()));
+    let workers = vec![
+        start_worker(8001, &(0..20).collect::<Vec<_>>()),
+        start_worker(8002, &(20..40).collect::<Vec<_>>()),
+    ];
     wait_for_worker("http://localhost:8001").await;
     wait_for_worker("http://localhost:8002").await;
     eprintln!("  Workers ready");
@@ -140,7 +138,11 @@ async fn main() {
             .await
         {
             Ok(output) => {
-                eprintln!("  Worker {wid}: experts={:?}, output norm={:.4}", ids, output.iter().map(|x| x * x).sum::<f32>().sqrt());
+                eprintln!(
+                    "  Worker {wid}: experts={:?}, output norm={:.4}",
+                    ids,
+                    output.iter().map(|x| x * x).sum::<f32>().sqrt()
+                );
                 for d in 0..d_model {
                     remote_ffn[d] += output[d];
                 }

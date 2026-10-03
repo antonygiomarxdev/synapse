@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::job::job::{Job, Message, Priority};
 use crate::job::job_id::JobId;
 use crate::job::ports::JobStore;
+use crate::scheduler::Scheduler;
 use crate::scheduler::metrics::MetricsCollector;
-use crate::scheduler::scheduler::Scheduler;
 
 /// Shared application state injected into handlers.
 #[derive(Clone)]
@@ -121,19 +121,13 @@ pub async fn create_job(
         None => Priority::Normal,
     };
 
-    let messages: Vec<Message> = req
-        .messages
-        .into_iter()
-        .map(|m| Message { role: m.role, content: m.content })
-        .collect();
+    let messages: Vec<Message> =
+        req.messages.into_iter().map(|m| Message { role: m.role, content: m.content }).collect();
 
     let job = match Job::submit(req.model, messages, priority) {
         Ok(job) => job,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: e.to_string() }),
-            )
+            return (StatusCode::BAD_REQUEST, Json(ErrorResponse { error: e.to_string() }))
                 .into_response();
         }
     };
@@ -141,10 +135,7 @@ pub async fn create_job(
     let job_id = job.id;
 
     if let Err(e) = state.job_store.save(&job) {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
-        )
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e.to_string() }))
             .into_response();
     }
 
@@ -217,11 +208,7 @@ pub async fn create_job(
         });
     }
 
-    (
-        StatusCode::ACCEPTED,
-        Json(CreateJobResponse { job_id: job_id.to_string() }),
-    )
-        .into_response()
+    (StatusCode::ACCEPTED, Json(CreateJobResponse { job_id: job_id.to_string() })).into_response()
 }
 
 /// Get job status and result.
@@ -238,10 +225,7 @@ pub async fn create_job(
     ),
     tag = "jobs"
 )]
-pub async fn get_job(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+pub async fn get_job(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
     let job_id: JobId = match id.parse() {
         Ok(id) => id,
         Err(e) => {
@@ -280,10 +264,10 @@ fn job_to_response(job: &Job) -> JobResponse {
         object: "job".into(),
         status: job.status.to_string(),
         model: job.model.clone(),
-        result: job.result.as_ref().map(|r| JobResultResponse {
-            text: r.text.clone(),
-            tokens: r.tokens,
-        }),
+        result: job
+            .result
+            .as_ref()
+            .map(|r| JobResultResponse { text: r.text.clone(), tokens: r.tokens }),
         error: job.error.clone(),
         created_at: job.created_at.to_rfc3339(),
         updated_at: job.updated_at.to_rfc3339(),
@@ -429,10 +413,7 @@ mod tests {
 
         let response = app
             .oneshot(
-                Request::builder()
-                    .uri(format!("/v1/jobs/{job_id}"))
-                    .body(Body::empty())
-                    .unwrap(),
+                Request::builder().uri(format!("/v1/jobs/{job_id}")).body(Body::empty()).unwrap(),
             )
             .await
             .unwrap();
@@ -467,12 +448,7 @@ mod tests {
     async fn get_job_returns_400_for_invalid_id() {
         let app = test_app();
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/v1/jobs/not-a-uuid")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/v1/jobs/not-a-uuid").body(Body::empty()).unwrap())
             .await
             .unwrap();
 

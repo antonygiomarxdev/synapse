@@ -30,31 +30,35 @@ impl Default for InMemoryJobStore {
 
 impl JobStore for InMemoryJobStore {
     fn save(&self, job: &Job) -> Result<(), DomainError> {
-        let mut jobs = self.jobs.lock().map_err(|e| DomainError::StorageError {
-            message: format!("lock poisoned: {e}"),
-        })?;
+        let mut jobs = self
+            .jobs
+            .lock()
+            .map_err(|e| DomainError::StorageError { message: format!("lock poisoned: {e}") })?;
         jobs.insert(job.id, job.clone());
         Ok(())
     }
 
     fn find_by_id(&self, id: &JobId) -> Result<Option<Job>, DomainError> {
-        let jobs = self.jobs.lock().map_err(|e| DomainError::StorageError {
-            message: format!("lock poisoned: {e}"),
-        })?;
+        let jobs = self
+            .jobs
+            .lock()
+            .map_err(|e| DomainError::StorageError { message: format!("lock poisoned: {e}") })?;
         Ok(jobs.get(id).cloned())
     }
 
     fn list(&self) -> Result<Vec<Job>, DomainError> {
-        let jobs = self.jobs.lock().map_err(|e| DomainError::StorageError {
-            message: format!("lock poisoned: {e}"),
-        })?;
+        let jobs = self
+            .jobs
+            .lock()
+            .map_err(|e| DomainError::StorageError { message: format!("lock poisoned: {e}") })?;
         Ok(jobs.values().cloned().collect())
     }
 
     fn start(&self, id: &JobId) -> Result<(), DomainError> {
-        let mut jobs = self.jobs.lock().map_err(|e| DomainError::StorageError {
-            message: format!("lock poisoned: {e}"),
-        })?;
+        let mut jobs = self
+            .jobs
+            .lock()
+            .map_err(|e| DomainError::StorageError { message: format!("lock poisoned: {e}") })?;
         match jobs.get_mut(id) {
             Some(job) => job.transition_to(JobStatus::Running),
             None => Err(DomainError::JobNotFound { job_id: id.to_string() }),
@@ -62,9 +66,10 @@ impl JobStore for InMemoryJobStore {
     }
 
     fn complete(&self, id: &JobId, result: JobResult) -> Result<(), DomainError> {
-        let mut jobs = self.jobs.lock().map_err(|e| DomainError::StorageError {
-            message: format!("lock poisoned: {e}"),
-        })?;
+        let mut jobs = self
+            .jobs
+            .lock()
+            .map_err(|e| DomainError::StorageError { message: format!("lock poisoned: {e}") })?;
         match jobs.get_mut(id) {
             Some(job) => job.complete(result),
             None => Err(DomainError::JobNotFound { job_id: id.to_string() }),
@@ -72,9 +77,10 @@ impl JobStore for InMemoryJobStore {
     }
 
     fn fail(&self, id: &JobId, reason: String) -> Result<(), DomainError> {
-        let mut jobs = self.jobs.lock().map_err(|e| DomainError::StorageError {
-            message: format!("lock poisoned: {e}"),
-        })?;
+        let mut jobs = self
+            .jobs
+            .lock()
+            .map_err(|e| DomainError::StorageError { message: format!("lock poisoned: {e}") })?;
         match jobs.get_mut(id) {
             Some(job) => job.fail(reason),
             None => Err(DomainError::JobNotFound { job_id: id.to_string() }),
