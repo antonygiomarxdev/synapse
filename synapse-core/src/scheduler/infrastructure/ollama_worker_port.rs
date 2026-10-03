@@ -103,6 +103,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore] // Requires Ollama running on localhost:11434
     async fn health_check_localhost() {
         let port = OllamaWorkerPort::new(vec![WorkerConfig {
             id: WorkerId::new("w-0"),
