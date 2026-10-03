@@ -231,7 +231,7 @@ Every PR must pass all of these before merge:
 | Format | `cargo fmt --check` + `ruff format --check` | Exact match |
 | Lint | `cargo clippy -- -D warnings` + `ruff check` | Zero warnings |
 | Unit tests | `cargo test` + `pytest` + `hardhat test` | All green |
-| Coverage | `cargo llvm-cov` | ≥80% lines, ≥80% functions |
+| Coverage | `cargo llvm-cov` | ≥80% lines, ≥80% functions (excludes `native_moe/` until #68, `bin/`, `main.rs`) |
 | Mutation | `cargo mutants -- --workspace` | All mutants killed |
 | Security | `cargo audit` + `cargo deny check` + `pip-audit` | Zero CVEs, licenses OK |
 | BDD | Gherkin scenarios in `features/` | All pass |

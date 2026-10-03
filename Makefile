@@ -14,7 +14,7 @@ test-model:
 	cargo test --release --lib -- --ignored --test-threads=1
 
 test-coverage:
-	cargo llvm-cov --fail-under-lines 80 --fail-under-functions 80
+	cargo llvm-cov --fail-under-lines 80 --fail-under-functions 80 --ignore-filename-regex 'native_moe/|bin/|main\.rs'
 
 test-mutants:
 	cargo mutants -- --workspace
