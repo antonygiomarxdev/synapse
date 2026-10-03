@@ -2,11 +2,19 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
+use axum::{
+    Json, Router,
+    extract::{DefaultBodyLimit, State},
+    http::StatusCode,
+    routing::post,
+};
 use tokio::net::TcpListener;
 
 use synapse_core::native_moe::expert_shard::ExpertShard;
 use synapse_core::native_moe::expert_worker_client::{FfnRequest, FfnResponse};
+
+/// Maximum FFN request body size.
+const MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
 
 struct WorkerState {
     /// Layer index → expert shard for that layer
@@ -91,6 +99,8 @@ async fn main() {
     let app = Router::new()
         .route("/ffn", post(handle_ffn))
         .route("/health", axum::routing::get(handle_health))
+        // Batched requests exceed axum's 2 MB default (128 rows ~ 2.5 MB of JSON)
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .with_state(state);
 
     let addr = format!("0.0.0.0:{port}");
