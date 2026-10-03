@@ -177,6 +177,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn load_single_expert() {
         let path = model_path();
         if !path.exists() {
@@ -194,6 +195,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn load_multiple_experts() {
         let path = model_path();
         if !path.exists() {
@@ -208,6 +210,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn shard_ffn_produces_output() {
         let path = model_path();
         if !path.exists() {
@@ -224,6 +227,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn missing_expert_returns_zero() {
         let path = model_path();
         if !path.exists() {

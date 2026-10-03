@@ -317,6 +317,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model file
     fn dequantize_attn_v_q4_k() {
         let gguf = GgufFile::open(&model_path()).unwrap();
         let info = gguf.find_tensor("blk.0.attn_v.weight").unwrap();
@@ -331,6 +332,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model file
     fn debug_q4_k_attn_v_nan_blocks() {
         // Diagnostic: count blocks with NaN in raw d/dmin (expected in some models).
         use std::io::{Read, Seek, SeekFrom};
@@ -361,6 +363,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model file
     fn dequantize_token_embd_q8_0() {
         let gguf = GgufFile::open(&model_path()).unwrap();
         let info = gguf.find_tensor("token_embd.weight").unwrap();
@@ -372,6 +375,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model file
     fn dequantize_gate_inp_f32_is_direct_read() {
         let gguf = GgufFile::open(&model_path()).unwrap();
         let info = gguf.find_tensor("blk.0.ffn_gate_inp.weight").unwrap();
@@ -383,6 +387,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model file
     fn dequantize_expert_tensor_q4_k() {
         let gguf = GgufFile::open(&model_path()).unwrap();
         let info = gguf.find_tensor("blk.0.ffn_gate_exps.weight").unwrap();
@@ -395,6 +400,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model file
     fn dequantize_down_exps_q6_k() {
         let gguf = GgufFile::open(&model_path()).unwrap();
         let info = gguf.find_tensor("blk.0.ffn_down_exps.weight").unwrap();

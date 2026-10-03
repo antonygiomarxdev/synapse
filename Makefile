@@ -10,6 +10,9 @@ build:
 test:
 	cargo test
 
+test-model:
+	cargo test --release --lib -- --ignored --test-threads=1
+
 test-coverage:
 	cargo llvm-cov --fail-under-lines 80 --fail-under-functions 80
 

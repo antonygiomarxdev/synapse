@@ -465,6 +465,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn parse_granite_moe_gguf() {
         let path = model_path().expect("Granite MoE GGUF not found");
         let gguf = GgufFile::open(&path).expect("failed to parse GGUF");
@@ -480,6 +481,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn find_gate_inp_tensor() {
         let path = model_path().expect("Granite MoE GGUF not found");
         let gguf = GgufFile::open(&path).unwrap();
@@ -491,6 +493,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn read_gate_inp_f32() {
         let path = model_path().expect("Granite MoE GGUF not found");
         let gguf = GgufFile::open(&path).unwrap();

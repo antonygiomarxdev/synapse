@@ -761,6 +761,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn forward_pass_on_real_model_routes_experts() {
         let model = MoeModel::load_routing(&model_path()).expect("load failed");
         let tokens = vec![0u32, 1, 2, 3];
@@ -777,6 +778,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn routing_with_zeros_input_still_produces_valid_scores() {
         let model = MoeModel::load_routing(&model_path()).expect("load failed");
         let tokens = vec![0u32];
@@ -788,6 +790,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn full_forward_produces_logits() {
         let model = MoeModel::load_all(&model_path()).expect("load_all failed");
         let tokens = vec![1u32]; // single token
@@ -803,6 +806,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn trace_logits_by_layer_count() {
         let prompt_tokens = vec![8197u32, 438, 322, 18926, 432, 45600, 49];
         let model = MoeModel::load_all(&model_path()).expect("load_all failed");
@@ -842,6 +846,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn forward_matches_ollama_top_token() {
         let prompt_tokens = vec![8197u32, 438, 322, 18926, 432, 45600, 49];
         let model = MoeModel::load_all(&model_path()).expect("load_all failed");
@@ -872,6 +877,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn single_token_logits() {
         let model = MoeModel::load_all(&model_path()).expect("load_all failed");
         let tokens = vec![49u32]; // single token, same as llama-cpp-python reference
@@ -897,6 +903,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn trace_single_token_by_layer() {
         let model = MoeModel::load_all(&model_path()).expect("load_all failed");
         let tokens = vec![49u32];
@@ -933,6 +940,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn trace_norms_by_layer() {
         let model = MoeModel::load_all(&model_path()).expect("load_all failed");
         let tokens = [49u32]; // single token
@@ -1062,6 +1070,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn spike_distributed_expert_impact() {
         // Spike: prove that expert selection matters for distributed inference.
         // If different nodes hold different experts, the output will differ.
@@ -1125,6 +1134,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn test_ffn_impact() {
         let model = MoeModel::load_all(&model_path()).expect("load_all failed");
         let tokens = vec![49u32];
