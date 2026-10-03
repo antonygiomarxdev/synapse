@@ -11,6 +11,8 @@ use synapse_core::native_moe::expert_worker_client::{FfnRequest, FfnResponse};
 struct WorkerState {
     /// Layer index → expert shard for that layer
     shards: HashMap<usize, ExpertShard>,
+    /// Artificial delay per FFN request, simulating network round-trip time
+    delay: std::time::Duration,
 }
 
 async fn handle_ffn(
@@ -21,6 +23,9 @@ async fn handle_ffn(
         Some(s) => s,
         None => return Err(StatusCode::NOT_FOUND),
     };
+    if !state.delay.is_zero() {
+        tokio::time::sleep(state.delay).await;
+    }
     let outputs = shard.ffn_batch(&req.rows);
     Ok(Json(FfnResponse { outputs }))
 }
@@ -34,7 +39,7 @@ async fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
         eprintln!(
-            "Usage: expert_worker <model.gguf> <expert_indices...> [--port PORT] [--layers N]"
+            "Usage: expert_worker <model.gguf> <expert_indices...> [--port PORT] [--layers N] [--delay-ms MS]"
         );
         eprintln!("Example: expert_worker model.gguf 0 1 2 3 4 --port 8001 --layers 32");
         std::process::exit(1);
@@ -43,6 +48,7 @@ async fn main() {
     let model_path = PathBuf::from(&args[1]);
 
     let mut port = 8001u16;
+    let mut delay_ms = 0u64;
     let mut n_layers = 32usize;
     let mut indices = Vec::new();
 
@@ -51,6 +57,9 @@ async fn main() {
         if args[i] == "--port" {
             i += 1;
             port = args[i].parse().expect("port must be a number");
+        } else if args[i] == "--delay-ms" {
+            i += 1;
+            delay_ms = args[i].parse().expect("delay-ms must be a number");
         } else if args[i] == "--layers" {
             i += 1;
             n_layers = args[i].parse().expect("layers must be a number");
@@ -77,7 +86,7 @@ async fn main() {
 
     eprintln!("  loaded {} experts per layer, {} layers total", indices.len(), n_layers);
 
-    let state = Arc::new(WorkerState { shards });
+    let state = Arc::new(WorkerState { shards, delay: std::time::Duration::from_millis(delay_ms) });
 
     let app = Router::new()
         .route("/ffn", post(handle_ffn))
