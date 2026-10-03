@@ -54,12 +54,12 @@ impl GateInpLayer {
         let n = self.n_experts;
         let d = self.d_model;
         let mut scores = vec![0.0_f32; n];
-        for expert in 0..n {
+        for (expert, score) in scores.iter_mut().enumerate().take(n) {
             let mut acc = 0.0;
-            for dim in 0..d {
-                acc += hidden[dim] * self.weights[expert * d + dim];
+            for (dim, &h) in hidden.iter().enumerate().take(d) {
+                acc += h * self.weights[expert * d + dim];
             }
-            scores[expert] = acc;
+            *score = acc;
         }
         scores
     }
@@ -106,7 +106,7 @@ impl ExpertRouter for RoundRobinRouter {
         let expert_ids = gate.top_k(hidden_state, k);
         let scores = gate.score_experts(hidden_state);
 
-        let per_worker = (expert_ids.len() + self.worker_count - 1) / self.worker_count;
+        let per_worker = expert_ids.len().div_ceil(self.worker_count);
         let mut assignments = Vec::new();
         let mut gate_weights = Vec::new();
 

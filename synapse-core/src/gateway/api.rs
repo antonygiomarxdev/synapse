@@ -6,9 +6,9 @@ use utoipa::OpenApi;
 
 use super::{catalog, jobs, router};
 use crate::job::infrastructure::InMemoryJobStore;
-use crate::scheduler::metrics::MetricsCollector;
-use crate::scheduler::scheduler::Scheduler;
+use crate::scheduler::Scheduler;
 use crate::scheduler::infrastructure::{InMemoryTaskStore, OllamaWorkerPort, WorkerConfig};
+use crate::scheduler::metrics::MetricsCollector;
 use crate::scheduler::task::WorkerInfo;
 use crate::scheduler::worker_id::WorkerId;
 
@@ -115,18 +115,9 @@ pub fn build_router_with_config(config: GatewayConfig) -> Router {
         base_url: config.ollama_url.clone(),
     };
     let worker_port = Arc::new(OllamaWorkerPort::new(vec![ollama_config]));
-    let workers = vec![WorkerInfo {
-        id: worker_id,
-        model: config.model,
-        healthy: true,
-    }];
+    let workers = vec![WorkerInfo { id: worker_id, model: config.model, healthy: true }];
 
-    let scheduler = Arc::new(Scheduler::new(
-        task_store,
-        job_store.clone(),
-        worker_port,
-        workers,
-    ));
+    let scheduler = Arc::new(Scheduler::new(task_store, job_store.clone(), worker_port, workers));
 
     let state = jobs::AppState {
         job_store,
@@ -147,7 +138,9 @@ pub fn build_router_with_state(state: jobs::AppState) -> Router {
         .route("/v1/jobs", axum::routing::post(jobs::create_job))
         .route("/v1/jobs/{id}", axum::routing::get(jobs::get_job))
         .route("/metrics", get(router::metrics_handler))
-        .merge(utoipa_swagger_ui::SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi))
+        .merge(
+            utoipa_swagger_ui::SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi),
+        )
         .with_state(state)
 }
 
@@ -179,12 +172,7 @@ mod tests {
         let app = build_router();
 
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api-docs/openapi.json")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/api-docs/openapi.json").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
@@ -196,12 +184,7 @@ mod tests {
         let app = build_router();
 
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/swagger-ui/")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/swagger-ui/").body(Body::empty()).unwrap())
             .await
             .unwrap();
 
@@ -213,12 +196,7 @@ mod tests {
         let app = build_router();
 
         let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/metrics")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
+            .oneshot(Request::builder().uri("/metrics").body(Body::empty()).unwrap())
             .await
             .unwrap();
 

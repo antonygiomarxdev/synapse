@@ -3,6 +3,10 @@
 
 target-version = "py312"
 
+exclude = [
+    "synapse_runtime/spike_pb2.py",
+]
+
 [lint]
 select = [
     "E",   # pycodestyle errors

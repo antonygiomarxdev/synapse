@@ -13,7 +13,7 @@
 /// and any weight provider can plug in without modifying the forward loop.
 use std::path::Path;
 
-use crate::native_moe::gguf::{GgufFile, TensorInfo};
+use crate::native_moe::gguf::GgufFile;
 use crate::native_moe::quant::dequantize_tensor;
 
 /// Model configuration extracted from GGUF metadata.
@@ -285,6 +285,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn load_routing_loads_config_and_gate_inp() {
         let model = MoeModel::load_routing(&model_path()).expect("load failed");
         let c = &model.config;
@@ -299,6 +300,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore] // Requires GGUF model (~13 GB RAM)
     fn load_routing_loads_norms() {
         let model = MoeModel::load_routing(&model_path()).expect("load failed");
         let l0 = &model.layers[0];

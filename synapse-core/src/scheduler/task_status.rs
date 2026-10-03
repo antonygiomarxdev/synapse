@@ -33,10 +33,7 @@ impl TaskStatus {
         if self.can_transition_to(&next) {
             Ok(next)
         } else {
-            Err(DomainError::InvalidTaskTransition {
-                from: self.to_string(),
-                to: next.to_string(),
-            })
+            Err(DomainError::InvalidTaskTransition { from: self.to_string(), to: next.to_string() })
         }
     }
 }
@@ -107,7 +104,8 @@ mod tests {
 
     #[test]
     fn serde_roundtrip() {
-        let statuses = [TaskStatus::Pending, TaskStatus::Leased, TaskStatus::Completed, TaskStatus::Failed];
+        let statuses =
+            [TaskStatus::Pending, TaskStatus::Leased, TaskStatus::Completed, TaskStatus::Failed];
         for s in &statuses {
             let json = serde_json::to_string(s).unwrap();
             let parsed: TaskStatus = serde_json::from_str(&json).unwrap();

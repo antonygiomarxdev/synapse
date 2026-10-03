@@ -20,6 +20,7 @@ Lifecycle:
 """
 
 import argparse
+import contextlib
 import json
 import os
 import struct
@@ -47,7 +48,7 @@ def load_model(model_name: str):
         return MockEngine(mock_name)
 
     try:
-        from vllm import LLM, SamplingParams
+        from vllm import LLM
     except ImportError:
         print("vLLM not installed. Fallback to mock engine.", file=sys.stderr)
         return MockEngine(model_name)
@@ -77,9 +78,12 @@ class VllmEngine:
     def __init__(self, llm):
         self._llm = llm
         from vllm import SamplingParams
+
         self._SamplingParams = SamplingParams
 
-    def generate(self, prompt: str, max_tokens: int, seed: int) -> tuple[str, int, float]:
+    def generate(
+        self, prompt: str, max_tokens: int, seed: int
+    ) -> tuple[str, int, float]:
         """Run generation. Returns (text, num_tokens, elapsed_ms)."""
         start = time.monotonic()
         params = self._SamplingParams(
@@ -117,28 +121,38 @@ class OllamaEngine:
                 data = json.loads(resp.read())
                 models = [m["name"] for m in data.get("models", [])]
                 if model_name not in models:
-                    print(f"WARNING: model '{model_name}' not found in Ollama. "
-                          f"Available: {models}", file=sys.stderr)
+                    print(
+                        f"WARNING: model '{model_name}' not found in Ollama. "
+                        f"Available: {models}",
+                        file=sys.stderr,
+                    )
                 else:
-                    print(f"Ollama backend ready: {model_name} (local)", file=sys.stderr)
+                    msg = f"Ollama backend ready: {model_name} (local)"
+                    print(msg, file=sys.stderr)
         except Exception as exc:
-            print(f"WARNING: cannot reach Ollama at localhost:11434 ({exc})", file=sys.stderr)
+            msg = f"WARNING: cannot reach Ollama at localhost:11434 ({exc})"
+            print(msg, file=sys.stderr)
 
-    def generate(self, prompt: str, max_tokens: int, seed: int) -> tuple[str, int, float]:
+    def generate(
+        self, prompt: str, max_tokens: int, seed: int
+    ) -> tuple[str, int, float]:
         """Run generation via Ollama HTTP API."""
         start = time.monotonic()
-        payload = json.dumps({
-            "model": self._model,
-            "prompt": prompt,
-            "stream": False,
-            "options": {
-                "num_predict": max_tokens,
-                "seed": seed if seed != 0 else 42,
-                "temperature": 0.0 if seed != 0 else 0.7,
-            },
-        }).encode()
-        req = urllib.request.Request(self._url, data=payload,
-            headers={"Content-Type": "application/json"})
+        payload = json.dumps(
+            {
+                "model": self._model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "num_predict": max_tokens,
+                    "seed": seed if seed != 0 else 42,
+                    "temperature": 0.0 if seed != 0 else 0.7,
+                },
+            }
+        ).encode()
+        req = urllib.request.Request(
+            self._url, data=payload, headers={"Content-Type": "application/json"}
+        )
         try:
             with urllib.request.urlopen(req, timeout=120) as resp:
                 data = json.loads(resp.read())
@@ -162,7 +176,9 @@ class MockEngine:
     def __init__(self, model_name: str):
         self._model = model_name
 
-    def generate(self, prompt: str, max_tokens: int, seed: int) -> tuple[str, int, float]:
+    def generate(
+        self, prompt: str, max_tokens: int, seed: int
+    ) -> tuple[str, int, float]:
         """Return a deterministic mock response."""
         import hashlib
 
@@ -259,21 +275,23 @@ def handle_connection(sock, engine) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Synapse Spike Worker")
     parser.add_argument("--socket", required=True, help="Unix socket path")
-    parser.add_argument("--model", required=True,
-                        help="Model ID. Prefix ollama: for Ollama, mock: for mock")
+    parser.add_argument(
+        "--model",
+        required=True,
+        help="Model ID. Prefix ollama: for Ollama, mock: for mock",
+    )
     args = parser.parse_args()
 
     socket_path = args.socket
     model_name = args.model
 
-    try:
+    with contextlib.suppress(OSError):
         os.unlink(socket_path)
-    except OSError:
-        pass
 
     engine = load_model(model_name)
 
     import socket
+
     server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     server.bind(socket_path)
     server.listen(1)
@@ -290,10 +308,8 @@ def main():
     finally:
         conn.close()
         server.close()
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(socket_path)
-        except OSError:
-            pass
 
 
 if __name__ == "__main__":

@@ -3,16 +3,16 @@ use std::time::Instant;
 
 use chrono::Utc;
 
+use synapse_core::job::infrastructure::InMemoryJobStore;
 use synapse_core::job::job::{Job, Message, Priority};
 use synapse_core::job::job_status::JobStatus;
-use synapse_core::job::infrastructure::InMemoryJobStore;
 use synapse_core::job::ports::JobStore;
+use synapse_core::scheduler::Scheduler;
+use synapse_core::scheduler::WorkerInfo;
 use synapse_core::scheduler::infrastructure::InMemoryTaskStore;
 use synapse_core::scheduler::infrastructure::MockWorkerPort;
 use synapse_core::scheduler::metrics::MetricsReport;
-use synapse_core::scheduler::scheduler::Scheduler;
 use synapse_core::scheduler::worker_id::WorkerId;
-use synapse_core::scheduler::WorkerInfo;
 
 const MODEL: &str = "granite3.1-moe:3b";
 const JOBS: usize = 50;
@@ -27,11 +27,7 @@ struct BenchResult {
 }
 
 fn worker(id: &str) -> WorkerInfo {
-    WorkerInfo {
-        id: WorkerId::new(id),
-        model: MODEL.into(),
-        healthy: true,
-    }
+    WorkerInfo { id: WorkerId::new(id), model: MODEL.into(), healthy: true }
 }
 
 async fn run_scenario(
@@ -44,12 +40,7 @@ async fn run_scenario(
 ) -> BenchResult {
     let task_store = Arc::new(InMemoryTaskStore::new());
     let job_store = Arc::new(InMemoryJobStore::new());
-    let scheduler = Scheduler::new(
-        task_store,
-        job_store.clone(),
-        mock.clone(),
-        workers,
-    );
+    let scheduler = Scheduler::new(task_store, job_store.clone(), mock.clone(), workers);
 
     let start = Instant::now();
     let now = Utc::now();
@@ -57,22 +48,12 @@ async fn run_scenario(
     let mut job_ids = Vec::new();
     for i in 0..n_jobs {
         let messages: Vec<Message> = (0..MESSAGES_PER_JOB)
-            .map(|j| Message {
-                role: "user".into(),
-                content: format!("msg-{i}-{j}"),
-            })
+            .map(|j| Message { role: "user".into(), content: format!("msg-{i}-{j}") })
             .collect();
-        let job = Job::submit(
-            MODEL.into(),
-            messages,
-            Priority::Normal,
-        )
-        .unwrap();
+        let job = Job::submit(MODEL.into(), messages, Priority::Normal).unwrap();
         job_ids.push(job.id);
         job_store.save(&job).unwrap();
-        scheduler
-            .decompose(&job.id, &job.messages, &job.model, now)
-            .unwrap();
+        scheduler.decompose(&job.id, &job.messages, &job.model, now).unwrap();
     }
 
     let mut crashed = false;
@@ -102,10 +83,7 @@ async fn run_scenario(
             job_store
                 .find_by_id(id)
                 .unwrap()
-                .map(|j| {
-                    j.status == JobStatus::Completed
-                        || j.status == JobStatus::Failed
-                })
+                .map(|j| j.status == JobStatus::Completed || j.status == JobStatus::Failed)
                 .unwrap_or(false)
         });
         if all_terminal {
@@ -137,26 +115,13 @@ async fn main() {
     // Scenario 1: Single worker
     eprintln!("[1/3] Single worker baseline...");
     let mock1 = Arc::new(MockWorkerPort::new());
-    let r1 = run_scenario(
-        "1 worker",
-        mock1,
-        vec![worker("w-0")],
-        JOBS,
-        None,
-        0,
-    ).await;
+    let r1 = run_scenario("1 worker", mock1, vec![worker("w-0")], JOBS, None, 0).await;
 
     // Scenario 2: Multi worker (2 workers)
     eprintln!("[2/3] Multi worker (2 workers)...");
     let mock2 = Arc::new(MockWorkerPort::new());
-    let r2 = run_scenario(
-        "2 workers",
-        mock2,
-        vec![worker("w-0"), worker("w-1")],
-        JOBS,
-        None,
-        0,
-    ).await;
+    let r2 =
+        run_scenario("2 workers", mock2, vec![worker("w-0"), worker("w-1")], JOBS, None, 0).await;
 
     // Scenario 3: Crash recovery (worker-0 fails mid-job)
     eprintln!("[3/3] Crash recovery (worker-0 fails after half)...");
@@ -168,7 +133,8 @@ async fn main() {
         JOBS,
         Some(WorkerId::new("w-0")),
         JOBS / 2,
-    ).await;
+    )
+    .await;
 
     // Generate report
     let date = Utc::now().format("%Y-%m-%d").to_string();
@@ -182,22 +148,13 @@ async fn main() {
     println!("\n{report}");
 }
 
-fn generate_report(
-    date: &str,
-    results: &[BenchResult],
-) -> String {
+fn generate_report(date: &str, results: &[BenchResult]) -> String {
     let mut md = String::new();
 
-    md.push_str(&format!(
-        "# V0 Benchmark — {date}\n\n"
-    ));
+    md.push_str(&format!("# V0 Benchmark — {date}\n\n"));
     md.push_str("## Configuration\n\n");
-    md.push_str(&format!(
-        "- **Model:** {MODEL}\n"
-    ));
-    md.push_str(&format!(
-        "- **Jobs:** {JOBS} × {MESSAGES_PER_JOB} messages\n\n"
-    ));
+    md.push_str(&format!("- **Model:** {MODEL}\n"));
+    md.push_str(&format!("- **Jobs:** {JOBS} × {MESSAGES_PER_JOB} messages\n\n"));
 
     md.push_str("## Results\n\n");
     md.push_str(
@@ -208,11 +165,7 @@ fn generate_report(
     );
 
     for r in results {
-        let ok_pct = if r.report.total_jobs > 0 {
-            r.report.success_rate * 100.0
-        } else {
-            0.0
-        };
+        let ok_pct = if r.report.total_jobs > 0 { r.report.success_rate * 100.0 } else { 0.0 };
         let wall_s = r.wall_clock_ms as f64 / 1000.0;
 
         md.push_str(&format!(
@@ -230,12 +183,8 @@ fn generate_report(
     }
 
     md.push_str("\n## Notes\n\n");
-    md.push_str(
-        "- Crash scenario: worker-0 marked failing after half the jobs\n",
-    );
-    md.push_str(
-        "- p50/p95 are per-task execution times\n",
-    );
+    md.push_str("- Crash scenario: worker-0 marked failing after half the jobs\n");
+    md.push_str("- p50/p95 are per-task execution times\n");
 
     md
 }

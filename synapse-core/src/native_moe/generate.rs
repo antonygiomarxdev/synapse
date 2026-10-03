@@ -3,7 +3,7 @@
 /// Implements autoregressive token generation: given a prompt, generates
 /// tokens one at a time using a KV cache to avoid recomputing attention
 /// for previous tokens.
-use crate::native_moe::forward::{ForwardOutput, forward, softmax};
+use crate::native_moe::forward::{forward, softmax};
 use crate::native_moe::model::MoeModel;
 use crate::native_moe::ops::top_k;
 use crate::shared::DomainError;
@@ -29,9 +29,10 @@ pub struct KvCache {
 impl KvCache {
     /// Create a new empty KV cache for the given model configuration.
     pub fn new(n_layers: usize, n_kv_heads: usize, head_dim: usize) -> Self {
+        let empty_head: Vec<Vec<Vec<f32>>> = vec![vec![]; n_kv_heads];
         Self {
-            keys: vec![vec![vec![vec![0.0; head_dim]; 0]; n_kv_heads]; n_layers],
-            values: vec![vec![vec![vec![0.0; head_dim]; 0]; n_kv_heads]; n_layers],
+            keys: vec![empty_head.clone(); n_layers],
+            values: vec![empty_head; n_layers],
             n_kv_heads,
             head_dim,
             seq_len: 0,
@@ -85,13 +86,7 @@ pub struct SamplingConfig {
 
 impl Default for SamplingConfig {
     fn default() -> Self {
-        Self {
-            temperature: 1.0,
-            top_k: 0,
-            top_p: 0.0,
-            max_tokens: 100,
-            eos_token_id: None,
-        }
+        Self { temperature: 1.0, top_k: 0, top_p: 0.0, max_tokens: 100, eos_token_id: None }
     }
 }
 
@@ -116,9 +111,7 @@ pub fn generate(
     config: &SamplingConfig,
 ) -> Result<GenerateOutput, DomainError> {
     if prompt_tokens.is_empty() {
-        return Err(DomainError::InvalidJob {
-            reason: "prompt_tokens must not be empty".into(),
-        });
+        return Err(DomainError::InvalidJob { reason: "prompt_tokens must not be empty".into() });
     }
 
     let mut all_tokens = prompt_tokens.to_vec();
@@ -148,11 +141,7 @@ pub fn generate(
         }
     }
 
-    Ok(GenerateOutput {
-        tokens: generated_tokens,
-        logits: generated_logits,
-        stopped_by_eos,
-    })
+    Ok(GenerateOutput { tokens: generated_tokens, logits: generated_logits, stopped_by_eos })
 }
 
 /// Sample a token from logits using the sampling configuration.
@@ -160,9 +149,7 @@ pub fn generate(
 /// Returns the sampled token ID, or an error if logits are empty.
 pub fn sample_token(logits: &[f32], config: &SamplingConfig) -> Result<u32, DomainError> {
     if logits.is_empty() {
-        return Err(DomainError::InvalidJob {
-            reason: "logits must not be empty".into(),
-        });
+        return Err(DomainError::InvalidJob { reason: "logits must not be empty".into() });
     }
 
     // Apply temperature
@@ -206,9 +193,7 @@ pub fn sample_token(logits: &[f32], config: &SamplingConfig) -> Result<u32, Doma
             .iter()
             .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
             .map(|(idx, _)| *idx as u32)
-            .ok_or_else(|| DomainError::InvalidJob {
-                reason: "no candidates available".into(),
-            })
+            .ok_or_else(|| DomainError::InvalidJob { reason: "no candidates available".into() })
     } else {
         // Sample from distribution
         let probs = softmax(&candidates.iter().map(|(_, s)| *s).collect::<Vec<_>>());
@@ -223,9 +208,7 @@ pub fn sample_token(logits: &[f32], config: &SamplingConfig) -> Result<u32, Doma
         candidates
             .last()
             .map(|(idx, _)| *idx as u32)
-            .ok_or_else(|| DomainError::InvalidJob {
-                reason: "no candidates available".into(),
-            })
+            .ok_or_else(|| DomainError::InvalidJob { reason: "no candidates available".into() })
     }
 }
 
@@ -236,10 +219,7 @@ mod tests {
     #[test]
     fn sample_token_greedy_picks_highest() {
         let logits = vec![0.1, 0.5, 0.3, 0.8, 0.2];
-        let config = SamplingConfig {
-            temperature: 0.0,
-            ..Default::default()
-        };
+        let config = SamplingConfig { temperature: 0.0, ..Default::default() };
         let token = sample_token(&logits, &config).unwrap();
         assert_eq!(token, 3); // index 3 has highest logit
     }
@@ -247,10 +227,7 @@ mod tests {
     #[test]
     fn sample_token_temperature_1_samples() {
         let logits = vec![0.1, 0.5, 0.3, 0.8, 0.2];
-        let config = SamplingConfig {
-            temperature: 1.0,
-            ..Default::default()
-        };
+        let config = SamplingConfig { temperature: 1.0, ..Default::default() };
         // With temperature 1.0, should sample (not deterministic)
         let token = sample_token(&logits, &config).unwrap();
         assert!(token < 5);
@@ -259,11 +236,7 @@ mod tests {
     #[test]
     fn sample_token_top_k_limits_candidates() {
         let logits = vec![0.1, 0.5, 0.3, 0.8, 0.2];
-        let config = SamplingConfig {
-            temperature: 0.0,
-            top_k: 2,
-            ..Default::default()
-        };
+        let config = SamplingConfig { temperature: 0.0, top_k: 2, ..Default::default() };
         // Top-2: indices 3 (0.8) and 1 (0.5)
         let token = sample_token(&logits, &config).unwrap();
         assert_eq!(token, 3); // greedy picks highest

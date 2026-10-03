@@ -53,48 +53,36 @@ impl TransportPort for TcpTransport {
     ///
     /// Uses length-prefixed protocol: [4 bytes length][payload]
     async fn send(&self, message: &[u8]) -> Result<Vec<u8>, DomainError> {
-        let mut stream = TcpStream::connect(self.config.addr)
-            .await
-            .map_err(|e| DomainError::WorkerDispatchFailed {
-                reason: format!("TCP connect failed: {e}"),
-            })?;
+        let mut stream = TcpStream::connect(self.config.addr).await.map_err(|e| {
+            DomainError::WorkerDispatchFailed { reason: format!("TCP connect failed: {e}") }
+        })?;
 
         // Write length-prefixed message
         let len = message.len() as u32;
         stream.write_all(&len.to_be_bytes()).await.map_err(|e| {
-            DomainError::WorkerDispatchFailed {
-                reason: format!("TCP write length failed: {e}"),
-            }
+            DomainError::WorkerDispatchFailed { reason: format!("TCP write length failed: {e}") }
         })?;
-        stream.write_all(message).await.map_err(|e| {
-            DomainError::WorkerDispatchFailed {
-                reason: format!("TCP write message failed: {e}"),
-            }
+        stream.write_all(message).await.map_err(|e| DomainError::WorkerDispatchFailed {
+            reason: format!("TCP write message failed: {e}"),
         })?;
 
         // Read length-prefixed response
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).await.map_err(|e| {
-            DomainError::WorkerDispatchFailed {
-                reason: format!("TCP read length failed: {e}"),
-            }
+        stream.read_exact(&mut len_buf).await.map_err(|e| DomainError::WorkerDispatchFailed {
+            reason: format!("TCP read length failed: {e}"),
         })?;
         let resp_len = u32::from_be_bytes(len_buf) as usize;
 
         // Validate message size
         if resp_len > MAX_MESSAGE_SIZE {
             return Err(DomainError::WorkerDispatchFailed {
-                reason: format!(
-                    "Response too large: {resp_len} bytes (max {MAX_MESSAGE_SIZE})"
-                ),
+                reason: format!("Response too large: {resp_len} bytes (max {MAX_MESSAGE_SIZE})"),
             });
         }
 
         let mut resp_buf = vec![0u8; resp_len];
-        stream.read_exact(&mut resp_buf).await.map_err(|e| {
-            DomainError::WorkerDispatchFailed {
-                reason: format!("TCP read response failed: {e}"),
-            }
+        stream.read_exact(&mut resp_buf).await.map_err(|e| DomainError::WorkerDispatchFailed {
+            reason: format!("TCP read response failed: {e}"),
         })?;
 
         Ok(resp_buf)
@@ -112,19 +100,15 @@ impl TcpWorkerListener {
     /// Bind to the given address and start listening.
     pub async fn bind(addr: SocketAddr) -> Result<Self, DomainError> {
         let listener = TcpListener::bind(addr).await.map_err(|e| {
-            DomainError::WorkerDispatchFailed {
-                reason: format!("TCP bind failed: {e}"),
-            }
+            DomainError::WorkerDispatchFailed { reason: format!("TCP bind failed: {e}") }
         })?;
         Ok(Self { listener })
     }
 
     /// Get the bound address (useful when binding to port 0).
     pub fn local_addr(&self) -> Result<SocketAddr, DomainError> {
-        self.listener.local_addr().map_err(|e| {
-            DomainError::WorkerDispatchFailed {
-                reason: format!("TCP local_addr failed: {e}"),
-            }
+        self.listener.local_addr().map_err(|e| DomainError::WorkerDispatchFailed {
+            reason: format!("TCP local_addr failed: {e}"),
         })
     }
 
@@ -137,34 +121,26 @@ impl TcpWorkerListener {
         Fut: std::future::Future<Output = Vec<u8>>,
     {
         let (mut stream, _addr) = self.listener.accept().await.map_err(|e| {
-            DomainError::WorkerDispatchFailed {
-                reason: format!("TCP accept failed: {e}"),
-            }
+            DomainError::WorkerDispatchFailed { reason: format!("TCP accept failed: {e}") }
         })?;
 
         // Read length-prefixed message
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).await.map_err(|e| {
-            DomainError::WorkerDispatchFailed {
-                reason: format!("TCP read length failed: {e}"),
-            }
+        stream.read_exact(&mut len_buf).await.map_err(|e| DomainError::WorkerDispatchFailed {
+            reason: format!("TCP read length failed: {e}"),
         })?;
         let msg_len = u32::from_be_bytes(len_buf) as usize;
 
         // Validate message size
         if msg_len > MAX_MESSAGE_SIZE {
             return Err(DomainError::WorkerDispatchFailed {
-                reason: format!(
-                    "Message too large: {msg_len} bytes (max {MAX_MESSAGE_SIZE})"
-                ),
+                reason: format!("Message too large: {msg_len} bytes (max {MAX_MESSAGE_SIZE})"),
             });
         }
 
         let mut msg_buf = vec![0u8; msg_len];
-        stream.read_exact(&mut msg_buf).await.map_err(|e| {
-            DomainError::WorkerDispatchFailed {
-                reason: format!("TCP read message failed: {e}"),
-            }
+        stream.read_exact(&mut msg_buf).await.map_err(|e| DomainError::WorkerDispatchFailed {
+            reason: format!("TCP read message failed: {e}"),
         })?;
 
         // Call handler (async)
@@ -173,14 +149,10 @@ impl TcpWorkerListener {
         // Write length-prefixed response
         let len = response.len() as u32;
         stream.write_all(&len.to_be_bytes()).await.map_err(|e| {
-            DomainError::WorkerDispatchFailed {
-                reason: format!("TCP write length failed: {e}"),
-            }
+            DomainError::WorkerDispatchFailed { reason: format!("TCP write length failed: {e}") }
         })?;
-        stream.write_all(&response).await.map_err(|e| {
-            DomainError::WorkerDispatchFailed {
-                reason: format!("TCP write response failed: {e}"),
-            }
+        stream.write_all(&response).await.map_err(|e| DomainError::WorkerDispatchFailed {
+            reason: format!("TCP write response failed: {e}"),
         })?;
 
         Ok(())
@@ -215,22 +187,22 @@ mod tests {
 
         // Spawn handler
         let handle = tokio::spawn(async move {
-            listener.accept_single(|msg| async move {
-                // Echo back with prefix
-                let mut response = b"echo: ".to_vec();
-                response.extend_from_slice(&msg);
-                response
-            }).await.unwrap();
+            listener
+                .accept_single(|msg| async move {
+                    // Echo back with prefix
+                    let mut response = b"echo: ".to_vec();
+                    response.extend_from_slice(&msg);
+                    response
+                })
+                .await
+                .unwrap();
         });
 
         // Give listener time to start
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         // Connect and send
-        let config = TcpWorkerConfig {
-            worker_id: "test".into(),
-            addr,
-        };
+        let config = TcpWorkerConfig { worker_id: "test".into(), addr };
         let transport = TcpTransport::new(config);
         let response = transport.send(b"hello").await.unwrap();
 
@@ -248,11 +220,14 @@ mod tests {
         // Spawn handler that accepts multiple connections
         let handle = tokio::spawn(async move {
             for _ in 0..3 {
-                listener.accept_single(|msg| async move {
-                    let mut response = b"response: ".to_vec();
-                    response.extend_from_slice(&msg);
-                    response
-                }).await.unwrap();
+                listener
+                    .accept_single(|msg| async move {
+                        let mut response = b"response: ".to_vec();
+                        response.extend_from_slice(&msg);
+                        response
+                    })
+                    .await
+                    .unwrap();
             }
         });
 
@@ -261,10 +236,7 @@ mod tests {
 
         // Send 3 messages
         for i in 0..3 {
-            let config = TcpWorkerConfig {
-                worker_id: "test".into(),
-                addr,
-            };
+            let config = TcpWorkerConfig { worker_id: "test".into(), addr };
             let transport = TcpTransport::new(config);
             let msg = format!("message {i}");
             let response = transport.send(msg.as_bytes()).await.unwrap();
@@ -276,10 +248,7 @@ mod tests {
 
     #[tokio::test]
     async fn tcp_worker_config_clone() {
-        let config = TcpWorkerConfig {
-            worker_id: "test".into(),
-            addr: test_addr(),
-        };
+        let config = TcpWorkerConfig { worker_id: "test".into(), addr: test_addr() };
         let cloned = config.clone();
         assert_eq!(cloned.worker_id, "test");
         assert_eq!(cloned.addr, test_addr());
@@ -287,10 +256,7 @@ mod tests {
 
     #[tokio::test]
     async fn tcp_transport_returns_addr() {
-        let config = TcpWorkerConfig {
-            worker_id: "test".into(),
-            addr: test_addr(),
-        };
+        let config = TcpWorkerConfig { worker_id: "test".into(), addr: test_addr() };
         let transport = TcpTransport::new(config);
         assert_eq!(transport.addr(), test_addr());
     }
@@ -302,18 +268,18 @@ mod tests {
         let addr = listener.local_addr().unwrap();
 
         let handle = tokio::spawn(async move {
-            listener.accept_single(|_| async move {
-                // Send response larger than MAX_MESSAGE_SIZE
-                vec![0u8; MAX_MESSAGE_SIZE + 1]
-            }).await.unwrap();
+            listener
+                .accept_single(|_| async move {
+                    // Send response larger than MAX_MESSAGE_SIZE
+                    vec![0u8; MAX_MESSAGE_SIZE + 1]
+                })
+                .await
+                .unwrap();
         });
 
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
-        let config = TcpWorkerConfig {
-            worker_id: "test".into(),
-            addr,
-        };
+        let config = TcpWorkerConfig { worker_id: "test".into(), addr };
         let transport = TcpTransport::new(config);
         let result = transport.send(b"hello").await;
         assert!(result.is_err());

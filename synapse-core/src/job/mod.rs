@@ -1,4 +1,5 @@
 pub mod infrastructure;
+#[allow(clippy::module_inception)]
 pub mod job;
 pub mod job_id;
 pub mod job_status;

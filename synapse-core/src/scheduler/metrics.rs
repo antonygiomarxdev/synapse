@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::Serialize;
 
@@ -88,12 +88,7 @@ impl MetricsCollector {
     }
 
     /// Records a task dispatch with queue time, execution time, and tokens generated.
-    pub fn record_task_dispatch(
-        &self,
-        queue_ms: u64,
-        exec_ms: u64,
-        tokens: u64,
-    ) {
+    pub fn record_task_dispatch(&self, queue_ms: u64, exec_ms: u64, tokens: u64) {
         self.total_tasks.fetch_add(1, Ordering::Relaxed);
         self.tokens_total.fetch_add(tokens, Ordering::Relaxed);
         if let Ok(mut times) = self.queue_times_ms.lock() {
@@ -121,16 +116,8 @@ impl MetricsCollector {
         let retries = self.retried_tasks.load(Ordering::Relaxed);
         let tokens = self.tokens_total.load(Ordering::Relaxed);
 
-        let success_rate = if total > 0 {
-            completed as f64 / total as f64
-        } else {
-            0.0
-        };
-        let retry_rate = if tasks > 0 {
-            retries as f64 / tasks as f64
-        } else {
-            0.0
-        };
+        let success_rate = if total > 0 { completed as f64 / total as f64 } else { 0.0 };
+        let retry_rate = if tasks > 0 { retries as f64 / tasks as f64 } else { 0.0 };
 
         let queue_times = self.queue_times_ms.lock().unwrap();
         let exec_times = self.execution_times_ms.lock().unwrap();
@@ -273,13 +260,7 @@ mod tests {
     fn percentile_values() {
         assert_eq!(percentile(&[], 50), 0);
         assert_eq!(percentile(&[100], 50), 100);
-        assert_eq!(
-            percentile(&[10, 20, 30, 40, 50], 50),
-            30
-        );
-        assert_eq!(
-            percentile(&[10, 20, 30, 40, 50], 95),
-            50
-        );
+        assert_eq!(percentile(&[10, 20, 30, 40, 50], 50), 30);
+        assert_eq!(percentile(&[10, 20, 30, 40, 50], 95), 50);
     }
 }

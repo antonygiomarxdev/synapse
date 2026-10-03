@@ -70,8 +70,7 @@ fn cosine(a: &[f32], b: &[f32]) -> f32 {
 
 /// Returns the top N indices by logit value.
 fn top_n(logits: &[f32], n: usize) -> Vec<usize> {
-    let mut idx: Vec<(usize, f32)> =
-        logits.iter().enumerate().map(|(i, &v)| (i, v)).collect();
+    let mut idx: Vec<(usize, f32)> = logits.iter().enumerate().map(|(i, &v)| (i, v)).collect();
     idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
     idx.iter().take(n).map(|(i, _)| *i).collect()
 }
@@ -113,9 +112,8 @@ async fn distributed_matches_monolithic_logits() {
     workers.push(start_worker(18002, &(20..40).collect::<Vec<_>>()));
 
     // Wait for workers
-    let all_ready =
-        wait_for_worker("http://localhost:18001", Duration::from_secs(120)).await
-            && wait_for_worker("http://localhost:18002", Duration::from_secs(120)).await;
+    let all_ready = wait_for_worker("http://localhost:18001", Duration::from_secs(120)).await
+        && wait_for_worker("http://localhost:18002", Duration::from_secs(120)).await;
     assert!(all_ready, "Workers failed to start");
 
     // Create distributed model
@@ -166,11 +164,12 @@ async fn four_workers_match_monolithic() {
     let mono_logits = &mono_output.logits;
 
     // Start 4 workers
-    let mut workers = Vec::new();
-    workers.push(start_worker(18001, &(0..10).collect::<Vec<_>>()));
-    workers.push(start_worker(18002, &(10..20).collect::<Vec<_>>()));
-    workers.push(start_worker(18003, &(20..30).collect::<Vec<_>>()));
-    workers.push(start_worker(18004, &(30..40).collect::<Vec<_>>()));
+    let mut workers = vec![
+        start_worker(18001, &(0..10).collect::<Vec<_>>()),
+        start_worker(18002, &(10..20).collect::<Vec<_>>()),
+        start_worker(18003, &(20..30).collect::<Vec<_>>()),
+        start_worker(18004, &(30..40).collect::<Vec<_>>()),
+    ];
 
     // Wait for all workers
     for port in 18001..=18004 {
@@ -217,9 +216,8 @@ async fn recovery_after_worker_crash() {
     workers.push(start_worker(18001, &(0..20).collect::<Vec<_>>()));
     workers.push(start_worker(18002, &(20..40).collect::<Vec<_>>()));
 
-    let all_ready =
-        wait_for_worker("http://localhost:18001", Duration::from_secs(120)).await
-            && wait_for_worker("http://localhost:18002", Duration::from_secs(120)).await;
+    let all_ready = wait_for_worker("http://localhost:18001", Duration::from_secs(120)).await
+        && wait_for_worker("http://localhost:18002", Duration::from_secs(120)).await;
     assert!(all_ready, "Workers failed to start");
 
     // Kill worker 2
@@ -263,9 +261,8 @@ async fn concurrent_inference_requests() {
     workers.push(start_worker(18001, &(0..20).collect::<Vec<_>>()));
     workers.push(start_worker(18002, &(20..40).collect::<Vec<_>>()));
 
-    let all_ready =
-        wait_for_worker("http://localhost:18001", Duration::from_secs(120)).await
-            && wait_for_worker("http://localhost:18002", Duration::from_secs(120)).await;
+    let all_ready = wait_for_worker("http://localhost:18001", Duration::from_secs(120)).await
+        && wait_for_worker("http://localhost:18002", Duration::from_secs(120)).await;
     assert!(all_ready, "Workers failed to start");
 
     // Create distributed model
@@ -289,7 +286,7 @@ async fn concurrent_inference_requests() {
         let output = dm.forward(&prompt).await;
         let elapsed = start.elapsed().as_millis();
         eprintln!("Request {}: {}ms, {} logits", i, elapsed, output.logits.len());
-        assert!(output.logits.len() > 0, "Request {i} should produce logits");
+        assert!(!output.logits.is_empty(), "Request {i} should produce logits");
     }
 
     cleanup_workers(&mut workers);
@@ -394,9 +391,8 @@ async fn measure_distributed_latency() {
     workers.push(start_worker(18001, &(0..20).collect::<Vec<_>>()));
     workers.push(start_worker(18002, &(20..40).collect::<Vec<_>>()));
 
-    let all_ready =
-        wait_for_worker("http://localhost:18001", Duration::from_secs(120)).await
-            && wait_for_worker("http://localhost:18002", Duration::from_secs(120)).await;
+    let all_ready = wait_for_worker("http://localhost:18001", Duration::from_secs(120)).await
+        && wait_for_worker("http://localhost:18002", Duration::from_secs(120)).await;
     assert!(all_ready, "Workers failed to start");
 
     let coordinator = MoeModel::load_coordinator(&mpath).expect("load_coordinator failed");

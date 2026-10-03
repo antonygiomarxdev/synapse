@@ -48,7 +48,7 @@ These apply to every line of code. No exceptions.
 
 **Location:** `synapse-core/src/native_moe/`
 
-**Status:** Distributed inference proven — cosine similarity 1.000000 with monolithic (Issue #25 resolved)
+**Status:** Distributed inference logit-verified (cosine 1.000000). Issue #25 in progress: InferencePort implementation (generate/verify/detect_vram drafted)
 
 **What works:**
 - GGUF v3 parser (F32, F16, Q8_0, Q4_K, Q6_K)
@@ -65,7 +65,7 @@ These apply to every line of code. No exceptions.
 - Dynamic expert loading (load on demand)
 - P2P expert discovery
 
-**Main tickets:** [#20](https://github.com/antonygiomarxdev/synapse/issues/20), [#25](https://github.com/antonygiomarxdev/synapse/issues/25) (resolved)
+**Main tickets:** [#20](https://github.com/antonygiomarxdev/synapse/issues/20), [#25](https://github.com/antonygiomarxdev/synapse/issues/25) (open)
 
 ## Key Directories
 
@@ -125,6 +125,7 @@ synapse/
 # Rust
 cargo build --release              # Build single binary
 cargo test                         # Run all Rust tests
+make test-model                    # Run GGUF-loading tests (requires ~13 GB RAM, runs single-threaded to avoid OOM)
 cargo fmt --check                  # Check formatting
 cargo clippy -- -D warnings        # Lint
 cargo llvm-cov --fail-under-lines 80  # Coverage check
@@ -189,7 +190,7 @@ make gauntlet
 | `synapse-core/src/gateway/jobs.rs` | Job CRUD handlers + AppState |
 | `synapse-core/src/job/job.rs` | Job aggregate: submit, transition_to, complete, fail |
 | `synapse-core/src/job/ports.rs` | JobStore port trait |
-| `synapse-core/src/scheduler/scheduler.rs` | Async scheduler with JoinSet |
+| `synapse-core/src/scheduler/core.rs` | Async scheduler with JoinSet |
 | `synapse-core/src/scheduler/task.rs` | Task aggregate with leases and retries |
 | `synapse-core/src/scheduler/ports.rs` | TaskStore + WorkerPort port traits |
 | `synapse-core/src/native_moe/expert_shard.rs` | Per-expert GGUF loader |
@@ -230,7 +231,7 @@ Every PR must pass all of these before merge:
 | Format | `cargo fmt --check` + `ruff format --check` | Exact match |
 | Lint | `cargo clippy -- -D warnings` + `ruff check` | Zero warnings |
 | Unit tests | `cargo test` + `pytest` + `hardhat test` | All green |
-| Coverage | `cargo llvm-cov` | ≥80% lines, ≥80% functions |
+| Coverage | `cargo llvm-cov` | ≥80% lines, ≥80% functions (excludes `native_moe/` until #68, `bin/`, `main.rs`) |
 | Mutation | `cargo mutants -- --workspace` | All mutants killed |
 | Security | `cargo audit` + `cargo deny check` + `pip-audit` | Zero CVEs, licenses OK |
 | BDD | Gherkin scenarios in `features/` | All pass |

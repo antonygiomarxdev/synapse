@@ -29,7 +29,7 @@ pub trait WorkerPort: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::job::job::{Message, Priority};
+    use crate::job::job::Message;
     use crate::job::job_id::JobId;
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -55,16 +55,35 @@ mod tests {
         }
 
         fn find_by_status(&self, status: &TaskStatus) -> Result<Vec<Task>, DomainError> {
-            Ok(self.tasks.lock().unwrap().values().filter(|t| t.status == *status).cloned().collect())
+            Ok(self
+                .tasks
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|t| t.status == *status)
+                .cloned()
+                .collect())
         }
 
         fn find_by_job_id(&self, job_id: &JobId) -> Result<Vec<Task>, DomainError> {
-            Ok(self.tasks.lock().unwrap().values().filter(|t| t.job_id == *job_id).cloned().collect())
+            Ok(self
+                .tasks
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|t| t.job_id == *job_id)
+                .cloned()
+                .collect())
         }
     }
 
     fn test_task() -> Task {
-        Task::new(JobId::new(), "model".into(), Message { role: "user".into(), content: "hi".into() }, chrono::Utc::now())
+        Task::new(
+            JobId::new(),
+            "model".into(),
+            Message { role: "user".into(), content: "hi".into() },
+            chrono::Utc::now(),
+        )
     }
 
     #[test]

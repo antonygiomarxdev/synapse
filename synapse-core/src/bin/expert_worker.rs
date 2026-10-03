@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
+use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 
@@ -34,8 +34,7 @@ async fn handle_ffn(
         Some(s) => s,
         None => return Err(StatusCode::NOT_FOUND),
     };
-    let output =
-        shard.expert_ffn(&req.hidden, &req.expert_ids, &req.expert_scores);
+    let output = shard.expert_ffn(&req.hidden, &req.expert_ids, &req.expert_scores);
     Ok(Json(FfnResponse { output }))
 }
 
@@ -50,9 +49,7 @@ async fn main() {
         eprintln!(
             "Usage: expert_worker <model.gguf> <expert_indices...> [--port PORT] [--layers N]"
         );
-        eprintln!(
-            "Example: expert_worker model.gguf 0 1 2 3 4 --port 8001 --layers 32"
-        );
+        eprintln!("Example: expert_worker model.gguf 0 1 2 3 4 --port 8001 --layers 32");
         std::process::exit(1);
     }
 
@@ -86,22 +83,12 @@ async fn main() {
 
     let mut shards = HashMap::new();
     for layer in 0..n_layers {
-        let shard = ExpertShard::load(
-            &model_path,
-            layer,
-            &indices,
-            d_model,
-            d_ff,
-        )
-        .expect("failed to load expert shard");
+        let shard = ExpertShard::load(&model_path, layer, &indices, d_model, d_ff)
+            .expect("failed to load expert shard");
         shards.insert(layer, shard);
     }
 
-    eprintln!(
-        "  loaded {} experts per layer, {} layers total",
-        indices.len(),
-        n_layers
-    );
+    eprintln!("  loaded {} experts per layer, {} layers total", indices.len(), n_layers);
 
     let state = Arc::new(WorkerState { shards });
 

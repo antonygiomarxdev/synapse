@@ -27,31 +27,35 @@ impl Default for InMemoryTaskStore {
 
 impl TaskStore for InMemoryTaskStore {
     fn save(&self, task: &Task) -> Result<(), DomainError> {
-        let mut tasks = self.tasks.lock().map_err(|e| DomainError::StorageError {
-            message: format!("lock poisoned: {e}"),
-        })?;
+        let mut tasks = self
+            .tasks
+            .lock()
+            .map_err(|e| DomainError::StorageError { message: format!("lock poisoned: {e}") })?;
         tasks.insert(task.id, task.clone());
         Ok(())
     }
 
     fn find_by_id(&self, id: &TaskId) -> Result<Option<Task>, DomainError> {
-        let tasks = self.tasks.lock().map_err(|e| DomainError::StorageError {
-            message: format!("lock poisoned: {e}"),
-        })?;
+        let tasks = self
+            .tasks
+            .lock()
+            .map_err(|e| DomainError::StorageError { message: format!("lock poisoned: {e}") })?;
         Ok(tasks.get(id).cloned())
     }
 
     fn find_by_status(&self, status: &TaskStatus) -> Result<Vec<Task>, DomainError> {
-        let tasks = self.tasks.lock().map_err(|e| DomainError::StorageError {
-            message: format!("lock poisoned: {e}"),
-        })?;
+        let tasks = self
+            .tasks
+            .lock()
+            .map_err(|e| DomainError::StorageError { message: format!("lock poisoned: {e}") })?;
         Ok(tasks.values().filter(|t| t.status == *status).cloned().collect())
     }
 
     fn find_by_job_id(&self, job_id: &JobId) -> Result<Vec<Task>, DomainError> {
-        let tasks = self.tasks.lock().map_err(|e| DomainError::StorageError {
-            message: format!("lock poisoned: {e}"),
-        })?;
+        let tasks = self
+            .tasks
+            .lock()
+            .map_err(|e| DomainError::StorageError { message: format!("lock poisoned: {e}") })?;
         Ok(tasks.values().filter(|t| t.job_id == *job_id).cloned().collect())
     }
 }
@@ -63,7 +67,12 @@ mod tests {
     use chrono::Utc;
 
     fn test_task() -> Task {
-        Task::new(JobId::new(), "model".into(), Message { role: "user".into(), content: "hi".into() }, Utc::now())
+        Task::new(
+            JobId::new(),
+            "model".into(),
+            Message { role: "user".into(), content: "hi".into() },
+            Utc::now(),
+        )
     }
 
     #[test]

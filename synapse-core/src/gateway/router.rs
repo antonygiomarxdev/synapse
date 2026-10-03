@@ -1,11 +1,7 @@
-use std::sync::Arc;
-
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
 
 use crate::job::job::{Job, Message as JobMessage, Priority};
-use crate::job::ports::JobStore;
-use crate::scheduler::scheduler::Scheduler;
 
 /// Request body for `POST /v1/chat/completions`.
 #[derive(Deserialize)]
@@ -61,15 +57,9 @@ fn default_priority() -> String {
 /// Handles Prometheus metrics requests.
 ///
 /// Returns metrics in Prometheus text format.
-pub async fn metrics_handler(
-    State(state): State<super::jobs::AppState>,
-) -> impl IntoResponse {
+pub async fn metrics_handler(State(state): State<super::jobs::AppState>) -> impl IntoResponse {
     let prometheus = state.metrics.export_prometheus();
-    (
-        StatusCode::OK,
-        [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
-        prometheus,
-    )
+    (StatusCode::OK, [("content-type", "text/plain; version=0.0.4; charset=utf-8")], prometheus)
 }
 
 /// Handles OpenAI-compatible chat completion requests.
@@ -91,18 +81,12 @@ pub async fn chat_completions(
     };
 
     // Convert messages to job format
-    let messages: Vec<JobMessage> = req
-        .messages
-        .into_iter()
-        .map(|m| JobMessage { role: m.role, content: m.content })
-        .collect();
+    let messages: Vec<JobMessage> =
+        req.messages.into_iter().map(|m| JobMessage { role: m.role, content: m.content }).collect();
 
     // Create and save job
     let job = Job::submit(req.model.clone(), messages, priority).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(super::jobs::ErrorResponse { error: e.to_string() }),
-        )
+        (StatusCode::BAD_REQUEST, Json(super::jobs::ErrorResponse { error: e.to_string() }))
     })?;
 
     let job_id = job.id;
@@ -164,11 +148,7 @@ pub async fn chat_completions(
         })?;
 
     // Build response
-    let content = job
-        .result
-        .as_ref()
-        .map(|r| r.text.clone())
-        .unwrap_or_else(|| "No result".into());
+    let content = job.result.as_ref().map(|r| r.text.clone()).unwrap_or_else(|| "No result".into());
 
     Ok(Json(ChatResponse {
         id: format!("chatcmpl-{job_id}"),
@@ -177,10 +157,7 @@ pub async fn chat_completions(
         model: job.model,
         choices: vec![Choice {
             index: 0,
-            message: Message {
-                role: "assistant".into(),
-                content,
-            },
+            message: Message { role: "assistant".into(), content },
             finish_reason: "stop".into(),
         }],
     }))
@@ -192,6 +169,7 @@ mod tests {
     use crate::job::infrastructure::InMemoryJobStore;
     use axum::body::Body;
     use axum::http::Request;
+    use std::sync::Arc;
     use tower::ServiceExt;
 
     fn test_state() -> super::super::jobs::AppState {

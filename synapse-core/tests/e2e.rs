@@ -16,11 +16,6 @@ async fn spawn_gateway() -> (SocketAddr, Client) {
     (addr, Client::new())
 }
 
-/// Helper to build a JSON request body.
-fn json_body(value: serde_json::Value) -> reqwest::Body {
-    serde_json::to_vec(&value).unwrap().into()
-}
-
 // ---------------------------------------------------------------------------
 // Health and discovery
 // ---------------------------------------------------------------------------
@@ -47,11 +42,8 @@ async fn health_returns_ok_with_version() {
 async fn unknown_route_returns_404() {
     let (addr, client) = spawn_gateway().await;
 
-    let resp = client
-        .get(format!("http://{addr}/unknown"))
-        .send()
-        .await
-        .expect("server should respond");
+    let resp =
+        client.get(format!("http://{addr}/unknown")).send().await.expect("server should respond");
     assert_eq!(resp.status(), 404);
 }
 
@@ -263,23 +255,6 @@ async fn openapi_spec_is_accessible() {
 // Multi-worker and resilience (spec #55)
 // ---------------------------------------------------------------------------
 
-/// Spawns an expert worker on a random port.
-async fn spawn_expert_worker(port: u16) -> tokio::process::Child {
-    tokio::process::Command::new("cargo")
-        .args([
-            "run",
-            "--release",
-            "--bin",
-            "expert_worker",
-            "--",
-            "--port",
-            &port.to_string(),
-        ])
-        .kill_on_drop(true)
-        .spawn()
-        .expect("failed to spawn expert worker")
-}
-
 /// Verifies two workers can register with the scheduler concurrently.
 #[tokio::test]
 async fn two_workers_register_concurrently() {
@@ -367,10 +342,7 @@ async fn scheduler_recovers_from_task_failure() {
         .send()
         .await
         .expect("server should poll job");
-    assert!(
-        resp.status().is_success(),
-        "gateway should survive worker unavailability"
-    );
+    assert!(resp.status().is_success(), "gateway should survive worker unavailability");
 }
 
 /// Verifies the gateway remains healthy after processing multiple jobs.

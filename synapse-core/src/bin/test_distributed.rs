@@ -6,9 +6,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::time::Duration;
 
-use synapse_core::native_moe::distributed_forward::{
-    DistributedModel, WorkerConfig,
-};
+use synapse_core::native_moe::distributed_forward::{DistributedModel, WorkerConfig};
 use synapse_core::native_moe::expert_worker_client::ExpertWorkerClient;
 use synapse_core::native_moe::forward;
 use synapse_core::native_moe::model::MoeModel;
@@ -19,10 +17,9 @@ fn model_path() -> PathBuf {
     )
 }
 
-fn start_worker(port: u16, layer: usize, experts: &[usize]) -> Child {
+fn start_worker(port: u16, _layer: usize, experts: &[usize]) -> Child {
     let path = model_path();
-    let expert_strs: Vec<String> =
-        experts.iter().map(|e| e.to_string()).collect();
+    let expert_strs: Vec<String> = experts.iter().map(|e| e.to_string()).collect();
 
     Command::new("cargo")
         .args([
@@ -65,8 +62,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 }
 
 fn top_n(logits: &[f32], n: usize) -> Vec<usize> {
-    let mut idx: Vec<(usize, f32)> =
-        logits.iter().enumerate().map(|(i, &v)| (i, v)).collect();
+    let mut idx: Vec<(usize, f32)> = logits.iter().enumerate().map(|(i, &v)| (i, v)).collect();
     idx.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
     idx.iter().take(n).map(|(i, _)| *i).collect()
 }
@@ -83,8 +79,7 @@ async fn main() {
 
     // Load monolithic model
     eprintln!("Loading monolithic model...");
-    let monolithic =
-        MoeModel::load_all(&mpath).expect("failed to load model");
+    let monolithic = MoeModel::load_all(&mpath).expect("failed to load model");
 
     let prompt_tokens = vec![49u32]; // single token
 
@@ -111,12 +106,8 @@ async fn main() {
     eprintln!("  Worker 2: experts 20-39 on :8002");
 
     eprintln!("  Waiting for workers...");
-    let w1_ok =
-        wait_for_worker("http://localhost:8001", Duration::from_secs(120))
-            .await;
-    let w2_ok =
-        wait_for_worker("http://localhost:8002", Duration::from_secs(120))
-            .await;
+    let w1_ok = wait_for_worker("http://localhost:8001", Duration::from_secs(120)).await;
+    let w2_ok = wait_for_worker("http://localhost:8002", Duration::from_secs(120)).await;
 
     if !w1_ok || !w2_ok {
         eprintln!("  Workers failed to start");
@@ -128,18 +119,11 @@ async fn main() {
     eprintln!("  Both workers ready\n");
 
     // Create distributed model with coordinator (attention + routing, no expert FFN)
-    let coordinator =
-        MoeModel::load_coordinator(&mpath).expect("load_coordinator failed");
+    let coordinator = MoeModel::load_coordinator(&mpath).expect("load_coordinator failed");
 
     let configs = vec![
-        WorkerConfig {
-            url: "http://localhost:8001".into(),
-            expert_indices: (0..20).collect(),
-        },
-        WorkerConfig {
-            url: "http://localhost:8002".into(),
-            expert_indices: (20..40).collect(),
-        },
+        WorkerConfig { url: "http://localhost:8001".into(), expert_indices: (0..20).collect() },
+        WorkerConfig { url: "http://localhost:8002".into(), expert_indices: (20..40).collect() },
     ];
 
     let dm = DistributedModel::new(coordinator, &configs);
@@ -177,19 +161,10 @@ async fn main() {
     // Verdict
     eprintln!("\n=== Verdict ===");
     if cos_sim > 0.99 {
-        eprintln!(
-            "  PASS: Distributed matches monolithic (cos_sim={:.4})",
-            cos_sim
-        );
+        eprintln!("  PASS: Distributed matches monolithic (cos_sim={:.4})", cos_sim);
     } else if cos_sim > 0.95 {
-        eprintln!(
-            "  WARN: Close but not exact (cos_sim={:.4})",
-            cos_sim
-        );
+        eprintln!("  WARN: Close but not exact (cos_sim={:.4})", cos_sim);
     } else {
-        eprintln!(
-            "  FAIL: Significant divergence (cos_sim={:.4})",
-            cos_sim
-        );
+        eprintln!("  FAIL: Significant divergence (cos_sim={:.4})", cos_sim);
     }
 }

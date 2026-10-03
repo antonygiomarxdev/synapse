@@ -2,7 +2,6 @@
 ///
 /// All operations are pure f32, no dependencies on ggml or external libraries.
 /// Used as building blocks for the forward loop.
-
 /// Vector-matrix multiplication: y[j] = sum_d x[d] * w[j * k + d]
 /// x: [k], w: [n, k] row-major, returns [n]
 pub fn matvec(x: &[f32], w: &[f32], k: usize, n: usize) -> Vec<f32> {

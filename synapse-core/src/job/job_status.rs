@@ -35,10 +35,7 @@ impl JobStatus {
         if self.can_transition_to(&next) {
             Ok(next)
         } else {
-            Err(DomainError::InvalidJobTransition {
-                from: self.to_string(),
-                to: next.to_string(),
-            })
+            Err(DomainError::InvalidJobTransition { from: self.to_string(), to: next.to_string() })
         }
     }
 }
@@ -106,10 +103,7 @@ mod tests {
     #[test]
     fn transition_rejects_invalid() {
         let result = JobStatus::Completed.transition(JobStatus::Running);
-        assert!(matches!(
-            result,
-            Err(DomainError::InvalidJobTransition { .. })
-        ));
+        assert!(matches!(result, Err(DomainError::InvalidJobTransition { .. })));
     }
 
     #[test]
@@ -122,12 +116,8 @@ mod tests {
 
     #[test]
     fn serde_roundtrip() {
-        let statuses = [
-            JobStatus::Pending,
-            JobStatus::Running,
-            JobStatus::Completed,
-            JobStatus::Failed,
-        ];
+        let statuses =
+            [JobStatus::Pending, JobStatus::Running, JobStatus::Completed, JobStatus::Failed];
         for status in &statuses {
             let json = serde_json::to_string(status).unwrap();
             let parsed: JobStatus = serde_json::from_str(&json).unwrap();

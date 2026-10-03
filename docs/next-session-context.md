@@ -5,8 +5,7 @@
 ```bash
 cd /home/ksante/dev/synapse
 git checkout main && git pull
-cargo test --lib -- --skip native_moe --skip health_check_localhost
-cargo test --test e2e
+cargo test
 ```
 
 ## Current State
@@ -36,10 +35,9 @@ cargo test --test e2e
 
 ### What's Pending
 
+- **#25**: InferencePort implementation (generate/verify/detect_vram drafted, KV cache support pending)
 - **#53**: Persistent storage (Turso/libSQL)
 - **#60**: KV cache optimization
-- **#62**: TLS/encryption
-- **#63**: Authentication
 
 ## Architecture
 
@@ -62,7 +60,7 @@ Worker A  Worker B  Worker C
 | `gateway/api.rs` | HTTP router builder |
 | `gateway/jobs.rs` | Job CRUD handlers |
 | `gateway/router.rs` | Chat completions handler |
-| `scheduler/scheduler.rs` | Async scheduler with JoinSet |
+| `scheduler/core.rs` | Async scheduler with JoinSet |
 | `scheduler/metrics.rs` | MetricsCollector with Prometheus export |
 | `transport/tcp.rs` | TCP transport for multi-machine |
 | `native_moe/generate.rs` | Multi-token generation |

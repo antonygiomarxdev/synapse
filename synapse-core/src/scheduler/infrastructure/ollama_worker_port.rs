@@ -55,17 +55,10 @@ impl OllamaWorkerPort {
 
 #[async_trait::async_trait]
 impl WorkerPort for OllamaWorkerPort {
-    async fn dispatch(
-        &self,
-        worker_id: &WorkerId,
-        task: &Task,
-    ) -> Result<String, DomainError> {
-        let config =
-            self.workers.get(worker_id).ok_or_else(|| {
-                DomainError::WorkerDispatchFailed {
-                    reason: format!("unknown worker: {worker_id}"),
-                }
-            })?;
+    async fn dispatch(&self, worker_id: &WorkerId, task: &Task) -> Result<String, DomainError> {
+        let config = self.workers.get(worker_id).ok_or_else(|| {
+            DomainError::WorkerDispatchFailed { reason: format!("unknown worker: {worker_id}") }
+        })?;
 
         let url = format!("{}/api/generate", config.base_url);
         let body = OllamaRequest {
@@ -92,16 +85,10 @@ impl WorkerPort for OllamaWorkerPort {
         Ok(response.response)
     }
 
-    async fn health_check(
-        &self,
-        worker_id: &WorkerId,
-    ) -> Result<bool, DomainError> {
-        let config =
-            self.workers.get(worker_id).ok_or_else(|| {
-                DomainError::WorkerDispatchFailed {
-                    reason: format!("unknown worker: {worker_id}"),
-                }
-            })?;
+    async fn health_check(&self, worker_id: &WorkerId) -> Result<bool, DomainError> {
+        let config = self.workers.get(worker_id).ok_or_else(|| {
+            DomainError::WorkerDispatchFailed { reason: format!("unknown worker: {worker_id}") }
+        })?;
 
         let url = format!("{}/api/tags", config.base_url);
         match self.client.get(&url).send().await {
@@ -114,23 +101,9 @@ impl WorkerPort for OllamaWorkerPort {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::job::job::Message;
-    use crate::job::job_id::JobId;
-    use chrono::Utc;
-
-    fn test_task() -> Task {
-        Task::new(
-            JobId::new(),
-            "granite3.1-moe:3b".into(),
-            Message {
-                role: "user".into(),
-                content: "Say hello in one word.".into(),
-            },
-            Utc::now(),
-        )
-    }
 
     #[tokio::test]
+    #[ignore] // Requires Ollama running on localhost:11434
     async fn health_check_localhost() {
         let port = OllamaWorkerPort::new(vec![WorkerConfig {
             id: WorkerId::new("w-0"),
@@ -138,19 +111,14 @@ mod tests {
             base_url: "http://localhost:11434".into(),
         }]);
 
-        let healthy =
-            port.health_check(&WorkerId::new("w-0")).await.unwrap();
+        let healthy = port.health_check(&WorkerId::new("w-0")).await.unwrap();
         assert!(healthy);
     }
 
     #[tokio::test]
     async fn health_check_unknown_worker() {
         let port = OllamaWorkerPort::new(vec![]);
-        let result =
-            port.health_check(&WorkerId::new("unknown")).await;
-        assert!(matches!(
-            result,
-            Err(DomainError::WorkerDispatchFailed { .. })
-        ));
+        let result = port.health_check(&WorkerId::new("unknown")).await;
+        assert!(matches!(result, Err(DomainError::WorkerDispatchFailed { .. })));
     }
 }
